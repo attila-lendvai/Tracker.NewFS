@@ -33,139 +33,12 @@ All rights reserved.
 */
 
 
-#include "Tracker.h"
 #include "TrackerSettings.h"
 #include "WidgetAttributeText.h"
 
+namespace BPrivate {
 
-class TTrackerState : public Settings {
-	public:
-		static TTrackerState *Get();
-		void Release();
-	
-		bool ShowDisksIcon();
-		void SetShowDisksIcon(bool);
-	
-		bool DesktopFilePanelRoot();
-		void SetDesktopFilePanelRoot(bool);
-	
-		bool MountVolumesOntoDesktop();
-		void SetMountVolumesOntoDesktop(bool);
-	
-		bool MountSharedVolumesOntoDesktop();
-		void SetMountSharedVolumesOntoDesktop(bool);
-	
-		bool IntegrateNonBootBeOSDesktops();
-		void SetIntegrateNonBootBeOSDesktops(bool);
-	
-		bool IntegrateAllNonBootDesktops();
-		void SetIntegrateAllNonBootDesktops(bool);
-	
-		bool ShowVolumeSpaceBar();
-		void SetShowVolumeSpaceBar(bool);
-	
-	 	rgb_color UsedSpaceColor();
-		void SetUsedSpaceColor(rgb_color color);
-	
-	 	rgb_color FreeSpaceColor();
-		void SetFreeSpaceColor(rgb_color color);
-	
-	 	rgb_color WarningSpaceColor();
-		void SetWarningSpaceColor(rgb_color color);
-	
-		bool ShowFullPathInTitleBar();
-		void SetShowFullPathInTitleBar(bool);
-	
-		bool SortFolderNamesFirst();
-		void SetSortFolderNamesFirst(bool);
-		
-		bool ShowSelectionWhenInactive();
-		void SetShowSelectionWhenInactive(bool);
-
-		bool TransparentSelection();
-		void SetTransparentSelection(bool);
-
-		rgb_color TransparentSelectionColor();
-		void SetTransparentSelection(rgb_color);
-	
-		bool SingleWindowBrowse();
-		void SetSingleWindowBrowse(bool);
-	
-		bool ShowNavigator();
-		void SetShowNavigator(bool);
-	
-		void RecentCounts(int32 *applications, int32 *documents, int32 *folders);
-		void SetRecentApplicationsCount(int32);
-		void SetRecentDocumentsCount(int32);
-		void SetRecentFoldersCount(int32);
-	
-		FormatSeparator TimeFormatSeparator();
-		void SetTimeFormatSeparator(FormatSeparator);
-		DateOrder DateOrderFormat();
-		void SetDateOrderFormat(DateOrder);
-		bool ClockIs24Hr();
-		void SetClockTo24Hr(bool);
-		
-		bool DontMoveFilesToTrash();
-		void SetDontMoveFilesToTrash(bool);
-		bool AskBeforeDeleteFile();
-		void SetAskBeforeDeleteFile(bool);
-	
-		void LoadSettingsIfNeeded();
-		void SaveSettings(bool onlyIfNonDefault = true);
-		
-
-		TTrackerState();
-		~TTrackerState();
-	private:
-		friend TrackerSettings;
-
-		static void InitIfNeeded();
-		TTrackerState(const TTrackerState&);
-		
-		BooleanValueSetting *fShowDisksIcon;
-		BooleanValueSetting *fMountVolumesOntoDesktop;
-		BooleanValueSetting *fIntegrateNonBootBeOSDesktops;
-		BooleanValueSetting *fIntegrateAllNonBootDesktops;
-		BooleanValueSetting *fDesktopFilePanelRoot;
-		BooleanValueSetting *fMountSharedVolumesOntoDesktop;
-		BooleanValueSetting *fShowFullPathInTitleBar;
-		BooleanValueSetting *fShowSelectionWhenInactive;
-		BooleanValueSetting *fTransparentSelection;
-		BooleanValueSetting *fSortFolderNamesFirst;
-		BooleanValueSetting *fSingleWindowBrowse;
-		BooleanValueSetting *fShowNavigator;
-		BooleanValueSetting *f24HrClock;
-			
-		ScalarValueSetting *fRecentApplicationsCount;
-		ScalarValueSetting *fRecentDocumentsCount;
-		ScalarValueSetting *fRecentFoldersCount;
-		ScalarValueSetting *fTimeFormatSeparator;
-		ScalarValueSetting *fDateOrderFormat;
-	
-		BooleanValueSetting *fShowVolumeSpaceBar;
-		HexScalarValueSetting *fUsedSpaceColor;
-		HexScalarValueSetting *fFreeSpaceColor;
-		HexScalarValueSetting *fWarningSpaceColor;
-		
-		BooleanValueSetting *fDontMoveFilesToTrash;
-		BooleanValueSetting *fAskBeforeDeleteFile;
-
-		HexScalarValueSetting *fTransparentSelectionColor;
-	
-		Benaphore fInitLock;
-		bool fInited;
-		bool fSettingsLoaded;
-	
-	//	friend class TTracker;
-		int32 fUseCounter;
-	
-		typedef Settings _inherited;
-		
-};
-
-static TTrackerState gTrackerState;
-
+static TrackerSettings gTrackerSettings;
 
 rgb_color ValueToColor(int32 value)
 {
@@ -179,7 +52,7 @@ rgb_color ValueToColor(int32 value)
 	if (color.alpha == 0)
 		color.alpha = 192;
 
-	return color;	
+	return color;
 }
 
 int32 ColorToValue(rgb_color color)
@@ -195,18 +68,16 @@ int32 ColorToValue(rgb_color color)
 }
 
 
-//	#pragma mark -
-
-
-TTrackerState::TTrackerState()
+TrackerSettings::TrackerSettings()
 	:	Settings("TrackerSettings", "Tracker"),
 		fInited(false),
 		fSettingsLoaded(false)
 {
+	LoadSettingsIfNeeded();
 }
 
 
-TTrackerState::TTrackerState(const TTrackerState&)
+TrackerSettings::TrackerSettings(const TrackerSettings &)
 	:	Settings("", "")
 {
 	// Placeholder copy constructor to prevent others from accidentally using the
@@ -216,21 +87,8 @@ TTrackerState::TTrackerState(const TTrackerState&)
 }
 
 
-TTrackerState::~TTrackerState()
-{
-}
-
-
 void 
-TTrackerState::SaveSettings(bool onlyIfNonDefault)
-{
-	if (fSettingsLoaded)
-		_inherited::SaveSettings(onlyIfNonDefault);
-}
-
-
-void 
-TTrackerState::LoadSettingsIfNeeded()
+TrackerSettings::LoadSettingsIfNeeded()
 {
 	if (fSettingsLoaded)
 		return;
@@ -240,6 +98,7 @@ TTrackerState::LoadSettingsIfNeeded()
 	Add(fMountSharedVolumesOntoDesktop = new BooleanValueSetting("MountSharedVolumesOntoDesktop", false));
 	Add(fIntegrateNonBootBeOSDesktops = new BooleanValueSetting("IntegrateNonBootBeOSDesktops", true));
 	Add(fIntegrateAllNonBootDesktops = new BooleanValueSetting("IntegrateAllNonBootDesktops", false));
+	Add(fEjectWhenUnmounting = new BooleanValueSetting("EjectWhenUnmounting", true));
 	Add(fDesktopFilePanelRoot = new BooleanValueSetting("DesktopFilePanelRoot", true));
 	Add(fShowFullPathInTitleBar = new BooleanValueSetting("ShowFullPathInTitleBar", false));
 	Add(fShowSelectionWhenInactive = new BooleanValueSetting("ShowSelectionWhenInactive", true));
@@ -266,126 +125,160 @@ TTrackerState::LoadSettingsIfNeeded()
 	Add(fAskBeforeDeleteFile = new BooleanValueSetting("AskBeforeDeleteFile", true));
 
 	Add(fTransparentSelectionColor = new HexScalarValueSetting("TransparentSelectionColor", 0x5050505f, "", ""));
+	
+	Add(fShowHomeButton = new BooleanValueSetting("ShowHomeButton", false));
+	Add(fHomeButtonDirectory = new StringValueSetting("HomeButtonDirectory", "/boot/home", "", ""));
 
+	Add(fDynamicFiltering = new BooleanValueSetting("DynamicFiltering", true));
+	Add(fDynamicFilteringExpressionType = new ScalarValueSetting("DynamicFilteringExpressionType", 3, "", ""));
+	Add(fDynamicFilteringInvert = new BooleanValueSetting("DynamicFilteringInvert", false));
+	Add(fDynamicFilteringIgnoreCase = new BooleanValueSetting("DynamicFilteringIgnoreCase", true));
+
+	Add(fStaticFiltering = new BooleanValueSetting("StaticFiltering", false));
+	
+	Add(fUndoEnabled = new BooleanValueSetting("UndoEnabled", true));
+	Add(fUndoDepth = new ScalarValueSetting("UndoDepth", 10, "", "", 1));
+	
+	Add(fWarnInWellKnownDirectories = new BooleanValueSetting("WarnInWellKnownDirectories", true));
+	
+	Add(fIconThemeEnabled = new BooleanValueSetting("IconThemeEnabled", false));
+	Add(fCurrentIconTheme = new StringValueSetting("CurrentIconTheme", "", "", ""));
+	Add(fIconThemeLookupSequence = new StringValueSetting("IconThemeLookupSequence", "badecf", "", ""));
+	
+	Add(fLanguageTheme = new StringValueSetting("LanguageTheme", "English", "", ""));
+	
 	TryReadingSettings();
-
+	
 	NameAttributeText::SetSortFolderNamesFirst(fSortFolderNamesFirst->Value());
-
+	
 	fSettingsLoaded = true;
 }
 
 
-//	#pragma mark -
-
-
-TrackerSettings::TrackerSettings()
+void
+TrackerSettings::SaveSettings(bool onlyIfNonDefault)
 {
-	gTrackerState.LoadSettingsIfNeeded();
+	if (fSettingsLoaded)
+		Settings::SaveSettings(onlyIfNonDefault);
 }
 
 
-void 
-TrackerSettings::SaveSettings(bool onlyIfNonDefault)
+const char *
+TrackerSettings::SettingsDirectory()
 {
-	gTrackerState.SaveSettings(onlyIfNonDefault);
+	return Settings::SettingsDirectory();
 }
 
 
 bool
 TrackerSettings::ShowDisksIcon()
 {
-	return gTrackerState.fShowDisksIcon->Value();
+	return fShowDisksIcon->Value();
 }
 
 
 void
 TrackerSettings::SetShowDisksIcon(bool enabled)
 {
-	gTrackerState.fShowDisksIcon->SetValue(enabled);
+	fShowDisksIcon->SetValue(enabled);
 }
 
 
 bool
 TrackerSettings::DesktopFilePanelRoot()
 {
-	return gTrackerState.fDesktopFilePanelRoot->Value();
+	return fDesktopFilePanelRoot->Value();
 }
 
 
 void 
 TrackerSettings::SetDesktopFilePanelRoot(bool enabled)
 {
-	gTrackerState.fDesktopFilePanelRoot->SetValue(enabled);
+	fDesktopFilePanelRoot->SetValue(enabled);
 }
 
 
 bool
 TrackerSettings::MountVolumesOntoDesktop()
 {
-	return gTrackerState.fMountVolumesOntoDesktop->Value();
+	return fMountVolumesOntoDesktop->Value();
 }
 
 
 void 
 TrackerSettings::SetMountVolumesOntoDesktop(bool enabled)
 {
-	gTrackerState.fMountVolumesOntoDesktop->SetValue(enabled);
+	fMountVolumesOntoDesktop->SetValue(enabled);
 }
 
 
 bool
 TrackerSettings::MountSharedVolumesOntoDesktop()
 {
-	return gTrackerState.fMountSharedVolumesOntoDesktop->Value();
+	return fMountSharedVolumesOntoDesktop->Value();
 }
 
 
 void 
 TrackerSettings::SetMountSharedVolumesOntoDesktop(bool enabled)
 {
-	gTrackerState.fMountSharedVolumesOntoDesktop->SetValue(enabled);
+	fMountSharedVolumesOntoDesktop->SetValue(enabled);
 }
 
 
 bool
 TrackerSettings::IntegrateNonBootBeOSDesktops()
 {
-	return gTrackerState.fIntegrateNonBootBeOSDesktops->Value();
+	return fIntegrateNonBootBeOSDesktops->Value();
 }
 
 
 void 
 TrackerSettings::SetIntegrateNonBootBeOSDesktops(bool enabled)
 {
-	gTrackerState.fIntegrateNonBootBeOSDesktops->SetValue(enabled);
+	fIntegrateNonBootBeOSDesktops->SetValue(enabled);
+}
+
+
+bool
+TrackerSettings::EjectWhenUnmounting()
+{
+	return fEjectWhenUnmounting->Value();
+}
+
+
+void
+TrackerSettings::SetEjectWhenUnmounting(bool enabled)
+{
+	fEjectWhenUnmounting->SetValue(enabled);
 }
 
 
 bool
 TrackerSettings::IntegrateAllNonBootDesktops()
 {
-	return gTrackerState.fIntegrateAllNonBootDesktops->Value();
+	return fIntegrateAllNonBootDesktops->Value();
 }
 
 
 bool
 TrackerSettings::ShowVolumeSpaceBar()
 {
-	return gTrackerState.fShowVolumeSpaceBar->Value();
+	return fShowVolumeSpaceBar->Value();
 }
 
 
 void
 TrackerSettings::SetShowVolumeSpaceBar(bool enabled)
 {
-	gTrackerState.fShowVolumeSpaceBar->SetValue(enabled);
+	fShowVolumeSpaceBar->SetValue(enabled);
 }
 
 
 rgb_color
 TrackerSettings::UsedSpaceColor()
 {
-	return ValueToColor(gTrackerState.fUsedSpaceColor->Value());
+	return ValueToColor(fUsedSpaceColor->Value());
 }
 
 
@@ -394,14 +287,15 @@ TrackerSettings::SetUsedSpaceColor(rgb_color color)
 {
 	if (color.alpha == 0)
 		color.alpha = 192;
-	gTrackerState.fUsedSpaceColor->ValueChanged(ColorToValue(color));
+	
+	fUsedSpaceColor->ValueChanged(ColorToValue(color));
 }
 
 
 rgb_color
 TrackerSettings::FreeSpaceColor()
 {
-	return ValueToColor(gTrackerState.fFreeSpaceColor->Value());
+	return ValueToColor(fFreeSpaceColor->Value());
 }
 
 
@@ -410,14 +304,15 @@ TrackerSettings::SetFreeSpaceColor(rgb_color color)
 {
 	if (color.alpha == 0)
 		color.alpha = 192;
-	gTrackerState.fFreeSpaceColor->ValueChanged(ColorToValue(color));
+	
+	fFreeSpaceColor->ValueChanged(ColorToValue(color));
 }
 
 
 rgb_color
 TrackerSettings::WarningSpaceColor()
 {
-	return ValueToColor(gTrackerState.fWarningSpaceColor->Value());
+	return ValueToColor(fWarningSpaceColor->Value());
 }
 
 
@@ -426,35 +321,36 @@ TrackerSettings::SetWarningSpaceColor(rgb_color color)
 {
 	if (color.alpha == 0)
 		color.alpha = 192;
-	gTrackerState.fWarningSpaceColor->ValueChanged(ColorToValue(color));
+	
+	fWarningSpaceColor->ValueChanged(ColorToValue(color));
 }
 
 
 bool
 TrackerSettings::ShowFullPathInTitleBar()
 {
-	return gTrackerState.fShowFullPathInTitleBar->Value();
+	return fShowFullPathInTitleBar->Value();
 }
 
 
 void
 TrackerSettings::SetShowFullPathInTitleBar(bool enabled)
 {
-	gTrackerState.fShowFullPathInTitleBar->SetValue(enabled);
+	fShowFullPathInTitleBar->SetValue(enabled);
 }
 
 
 bool
 TrackerSettings::SortFolderNamesFirst()
 {
-	return gTrackerState.fSortFolderNamesFirst->Value();
+	return fSortFolderNamesFirst->Value();
 }
 
 
 void
 TrackerSettings::SetSortFolderNamesFirst(bool enabled)
 {
-	gTrackerState.fSortFolderNamesFirst->SetValue(enabled);
+	fSortFolderNamesFirst->SetValue(enabled);
 	NameAttributeText::SetSortFolderNamesFirst(enabled);
 }
 
@@ -462,35 +358,35 @@ TrackerSettings::SetSortFolderNamesFirst(bool enabled)
 bool
 TrackerSettings::ShowSelectionWhenInactive()
 {
-	return gTrackerState.fShowSelectionWhenInactive->Value();
+	return fShowSelectionWhenInactive->Value();
 }
 
 
 void
 TrackerSettings::SetShowSelectionWhenInactive(bool enabled)
 {
-	gTrackerState.fShowSelectionWhenInactive->SetValue(enabled);
+	fShowSelectionWhenInactive->SetValue(enabled);
 }
 
 
 bool
 TrackerSettings::TransparentSelection()
 {
-	return gTrackerState.fTransparentSelection->Value();
+	return fTransparentSelection->Value();
 }
 
 
 void
 TrackerSettings::SetTransparentSelection(bool enabled)
 {
-	gTrackerState.fTransparentSelection->SetValue(enabled);
+	fTransparentSelection->SetValue(enabled);
 }
 
 
 rgb_color
 TrackerSettings::TransparentSelectionColor()
 {
-	return ValueToColor(gTrackerState.fTransparentSelectionColor->Value());
+	return ValueToColor(fTransparentSelectionColor->Value());
 }
 
 
@@ -499,35 +395,36 @@ TrackerSettings::SetTransparentSelectionColor(rgb_color color)
 {
 	if (color.alpha == 0)
 		color.alpha = 90;
-	gTrackerState.fTransparentSelectionColor->ValueChanged(ColorToValue(color));
+	
+	fTransparentSelectionColor->ValueChanged(ColorToValue(color));
 }
 
 
 bool
 TrackerSettings::SingleWindowBrowse()
 {
-	return gTrackerState.fSingleWindowBrowse->Value();
+	return fSingleWindowBrowse->Value();
 }
 
 
 void
 TrackerSettings::SetSingleWindowBrowse(bool enabled)
 {
-	gTrackerState.fSingleWindowBrowse->SetValue(enabled);
+	fSingleWindowBrowse->SetValue(enabled);
 }
 
 
 bool
 TrackerSettings::ShowNavigator()
 {
-	return gTrackerState.fShowNavigator->Value();
+	return fShowNavigator->Value();
 }
 
 
 void
 TrackerSettings::SetShowNavigator(bool enabled)
 {
-	gTrackerState.fShowNavigator->SetValue(enabled);
+	fShowNavigator->SetValue(enabled);
 }
 
 
@@ -535,101 +432,270 @@ void
 TrackerSettings::RecentCounts(int32 *applications, int32 *documents, int32 *folders)
 {
 	if (applications)
-		*applications = gTrackerState.fRecentApplicationsCount->Value();
+		*applications = fRecentApplicationsCount->Value();
 	if (documents)
-		*documents = gTrackerState.fRecentDocumentsCount->Value();
+		*documents = fRecentDocumentsCount->Value();
 	if (folders)
-		*folders = gTrackerState.fRecentFoldersCount->Value();
+		*folders = fRecentFoldersCount->Value();
 }
 
 
 void  
 TrackerSettings::SetRecentApplicationsCount(int32 count)
 {
-	gTrackerState.fRecentApplicationsCount->ValueChanged(count);
+	fRecentApplicationsCount->ValueChanged(count);
 }
 
 
 void  
 TrackerSettings::SetRecentDocumentsCount(int32 count)
 {
-	gTrackerState.fRecentDocumentsCount->ValueChanged(count);
+	fRecentDocumentsCount->ValueChanged(count);
 }
 
 
 void  
 TrackerSettings::SetRecentFoldersCount(int32 count)
 {
-	gTrackerState.fRecentFoldersCount->ValueChanged(count);
+	fRecentFoldersCount->ValueChanged(count);
 }
 
 
 FormatSeparator
 TrackerSettings::TimeFormatSeparator()
 {
-	return (FormatSeparator)gTrackerState.fTimeFormatSeparator->Value();
+	return (FormatSeparator)fTimeFormatSeparator->Value();
 }
 
 
 void
 TrackerSettings::SetTimeFormatSeparator(FormatSeparator separator)
 {
-	gTrackerState.fTimeFormatSeparator->ValueChanged((int32)separator);
+	fTimeFormatSeparator->ValueChanged((int32)separator);
 }
 
 
 DateOrder
 TrackerSettings::DateOrderFormat()
 {
-	return (DateOrder)gTrackerState.fDateOrderFormat->Value();
+	return (DateOrder)fDateOrderFormat->Value();
 }
 
 
 void
 TrackerSettings::SetDateOrderFormat(DateOrder order)
 {
-	gTrackerState.fDateOrderFormat->ValueChanged((int32)order);
+	fDateOrderFormat->ValueChanged((int32)order);
 }
 
 
 bool
 TrackerSettings::ClockIs24Hr()
 {
-	return gTrackerState.f24HrClock->Value();
+	return f24HrClock->Value();
 }
 
 
 void
 TrackerSettings::SetClockTo24Hr(bool enabled)
 {
-	gTrackerState.f24HrClock->SetValue(enabled);
+	f24HrClock->SetValue(enabled);
 }
 
 
 bool
 TrackerSettings::DontMoveFilesToTrash()
 {
-	return gTrackerState.fDontMoveFilesToTrash->Value();
+	return fDontMoveFilesToTrash->Value();
 }
 
 
 void
 TrackerSettings::SetDontMoveFilesToTrash(bool enabled)
 {
-	gTrackerState.fDontMoveFilesToTrash->SetValue(enabled);
+	fDontMoveFilesToTrash->SetValue(enabled);
 }
 
 
 bool
 TrackerSettings::AskBeforeDeleteFile()
 {
-	return gTrackerState.fAskBeforeDeleteFile->Value();
+	return fAskBeforeDeleteFile->Value();
 }
 
 
 void
 TrackerSettings::SetAskBeforeDeleteFile(bool enabled)
 {
-	gTrackerState.fAskBeforeDeleteFile->SetValue(enabled);
+	fAskBeforeDeleteFile->SetValue(enabled);
 }
 
+bool
+TrackerSettings::ShowHomeButton()
+{
+	return fShowHomeButton->Value();
+}
+
+void
+TrackerSettings::SetShowHomeButton(bool enabled)
+{
+	fShowHomeButton->SetValue(enabled);
+}
+
+const char *
+TrackerSettings::HomeButtonDirectory()
+{
+	return fHomeButtonDirectory->Value();
+}
+
+void
+TrackerSettings::SetHomeButtonDirectory(char* in_string)
+{
+	fHomeButtonDirectory->ValueChanged(in_string);
+}
+
+bool
+TrackerSettings::DynamicFiltering()
+{
+	return fDynamicFiltering->Value();
+}
+
+void
+TrackerSettings::SetDynamicFiltering(bool enabled)
+{
+	fDynamicFiltering->SetValue(enabled);
+}
+
+int32
+TrackerSettings::DynamicFilteringExpressionType()
+{
+	return fDynamicFilteringExpressionType->Value();
+}
+
+void
+TrackerSettings::SetDynamicFilteringExpressionType(int32 expressiontype)
+{
+	fDynamicFilteringExpressionType->ValueChanged(expressiontype);
+}
+
+bool
+TrackerSettings::DynamicFilteringInvert()
+{
+	return fDynamicFilteringInvert->Value();
+}
+
+void
+TrackerSettings::SetDynamicFilteringInvert(bool enabled)
+{
+	fDynamicFilteringInvert->SetValue(enabled);
+}
+
+bool
+TrackerSettings::DynamicFilteringIgnoreCase()
+{
+	return fDynamicFilteringIgnoreCase;
+}
+
+void
+TrackerSettings::SetDynamicFilteringIgnoreCase(bool enabled)
+{
+	fDynamicFilteringIgnoreCase->SetValue(enabled);
+}
+
+bool
+TrackerSettings::StaticFiltering()
+{
+	return fStaticFiltering->Value();
+}
+
+void
+TrackerSettings::SetStaticFiltering(bool enabled)
+{
+	fStaticFiltering->SetValue(enabled);
+}
+
+bool
+TrackerSettings::UndoEnabled()
+{
+	return fUndoEnabled->Value();
+}
+
+void
+TrackerSettings::SetUndoEnabled(bool enabled)
+{
+	fUndoEnabled->SetValue(enabled);
+}
+
+int32
+TrackerSettings::UndoDepth()
+{
+	return fUndoDepth->Value();
+}
+
+void
+TrackerSettings::SetUndoDepth(int32 depth)
+{
+	fUndoDepth->ValueChanged(depth);
+}
+
+bool
+TrackerSettings::WarnInWellKnownDirectories()
+{
+	return fWarnInWellKnownDirectories->Value();
+}
+
+void
+TrackerSettings::SetWarnInWellKnownDirectories(bool enabled)
+{
+	fWarnInWellKnownDirectories->SetValue(enabled);
+}
+
+bool
+TrackerSettings::IconThemeEnabled()
+{
+	return fIconThemeEnabled->Value();
+}
+
+void
+TrackerSettings::SetIconThemeEnabled(bool enabled)
+{
+	fIconThemeEnabled->SetValue(enabled);
+}
+
+const char *
+TrackerSettings::CurrentIconTheme()
+{
+	return fCurrentIconTheme->Value();
+}
+
+void
+TrackerSettings::SetCurrentIconTheme(char *theme)
+{
+	fCurrentIconTheme->ValueChanged(theme);
+}
+
+const char *
+TrackerSettings::IconThemeLookupSequence()
+{
+	return fIconThemeLookupSequence->Value();
+}
+
+void
+TrackerSettings::SetIconThemeLookupSequence(char *sequence)
+{
+	fIconThemeLookupSequence->ValueChanged(sequence);
+}
+
+const char *
+TrackerSettings::LanguageTheme()
+{
+	return fLanguageTheme->Value();
+}
+
+void
+TrackerSettings::SetLanguageTheme(char *new_locale)
+{
+	fLanguageTheme->ValueChanged(new_locale);
+}
+
+} // namespace BPrivate

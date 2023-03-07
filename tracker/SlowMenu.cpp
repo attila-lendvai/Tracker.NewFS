@@ -103,4 +103,3 @@ BSlowMenu::ClearMenuBuildingState()
 	TRESPASS();
 	// pure virtual, shouldn't be here
 }
-

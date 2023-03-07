@@ -35,9 +35,12 @@ All rights reserved.
 #ifndef	_VOLUME_WINDOW_H
 #define _VOLUME_WINDOW_H
 
+/* !!!!!!!! BVolumeWindow should not be used anymore !!!!!!!!! */
+#if 0
 #include "ContainerWindow.h"
 
 namespace BPrivate {
+
 
 class BVolumeWindow : public BContainerWindow {
 	// The volume window displays the virtual file system root with
@@ -50,7 +53,6 @@ protected:
 	virtual	void AddFileMenu(BMenu *menu);
 	virtual	void AddWindowContextMenus(BMenu *);
 	
-	virtual	void SetupMoveCopyMenus(const entry_ref *, BMenu *);
 	virtual void MenusBeginning();
 
 private:
@@ -60,5 +62,6 @@ private:
 } // namespace BPrivate
 
 using namespace BPrivate;
+#endif
 
 #endif

@@ -33,36 +33,33 @@ All rights reserved.
 */
 
 #include "Tracker.h"
+#include "TrackerHelper.h"
 
 #if DEBUG
 //#define LEAK_CHECKING
-
- #ifdef LEAK_CHECKING
-  #include "LeakChecking.h"
- #endif
+#ifdef LEAK_CHECKING
+#include "LeakChecking.h"
+#endif
 #endif
 
-#ifdef PROFILE
- #include "libprof.h"
-#endif
-
-int main(int , char **)
+int
+main(int argc, char *argv[])
 {
-#ifdef PROFILE 
-	PROFILE_INIT(1024);
-#endif
-
 #ifdef LEAK_CHECKING
 	SetNewLeakChecking(true);
 	SetMallocLeakChecking(true);
 #endif
 
-	TTracker tracker;
-	tracker.Run();
+	if (argc > 1 && strcmp(argv[1], "--helper") == 0) {
+		TrackerHelper *helper = new TrackerHelper();
+		helper->Run();
+		delete helper;
+		return 0;
+	}
 
-#ifdef PROFILE 
-	PROFILE_DUMP("/boot/home/Desktop/trackerProfile");
-#endif
+	TTracker *tracker = new TTracker();
+	tracker->Run();
+	delete tracker;
 
 	return 0;
 }

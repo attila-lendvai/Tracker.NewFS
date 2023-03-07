@@ -37,6 +37,7 @@ All rights reserved.
 #include "Model.h"
 
 #include <PictureButton.h>
+#include <MessageFilter.h>
 #include <View.h>
 
 class BTextControl;
@@ -56,7 +57,9 @@ enum NavigationAction
 	kNavigatorCommandBackward = 'NVBW',
 	kNavigatorCommandForward = 'NVFW',
 	kNavigatorCommandUp = 'NVUP',
-	kNavigatorCommandLocation = 'NVLC'
+	kNavigatorCommandLocation = 'NVLC',
+	kNavigatorCommandGoHome = 'NVGH',
+	kNavigatorCommandFilter = 'NVFI'
 };
 
 // Custom BPictureButton which takes
@@ -70,6 +73,7 @@ public:
 	
 	virtual	void AttachedToWindow();
 
+	void SetPictures();
 	void SetPicture(BBitmap *, bool enabled, bool on);
 
 private:
@@ -87,7 +91,13 @@ public:
 
 	static float CalcNavigatorHeight(void);
 
+	BTextControl *LocationBar() const;
 	BContainerWindow *Window() const;
+
+	void ShowHomeButton(bool enabled);
+	void ClearExpression();
+	bool Expression(BString &result);
+	void RefreshButtons();
 
 protected:
 	virtual void Draw(BRect rect);
@@ -100,17 +110,22 @@ protected:
 	void SendNavigationMessage(NavigationAction, BEntry *, bool option);
 	
 	void GoTo();
+	void DoFiltering();
 
 private:
+static filter_result LocationBarFilter(BMessage *message, BHandler **target, BMessageFilter *filter);
 
 	BPath fPath;
 	BNavigatorButton *fBack;
 	BNavigatorButton *fForw;
 	BNavigatorButton *fUp;
+	BNavigatorButton *fHome;
 	BTextControl *fLocation;
 
 	BObjectList<BPath> fBackHistory;
 	BObjectList<BPath> fForwHistory;
+
+	bool fSwitching;
 
 	typedef BView _inherited;
 };
@@ -122,6 +137,11 @@ BNavigator::Window() const
 	return dynamic_cast<BContainerWindow *>(_inherited::Window());
 }
 
+inline BTextControl * 
+BNavigator::LocationBar() const
+{
+	return fLocation;
+}
 
 } // namespace BPrivate
 

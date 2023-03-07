@@ -1,0 +1,16 @@
+*** This file is a translation file for the Tracker.NewFS ***
+* Format:
+* "Original string or format" = "Translated string or format";
+* Comments can be made freely, but shouldn't contain double quotes except if you escape them (\").
+* They should also, for clarity, be marked as comment. With /* */ for example.
+* As a special item, B_UTF8_ELLIPSIS (...) may be placed directly after closing double quotes to indicate
+* the item triggers a menu. They will be preprocessed and replaced by their UTF8 representation.
+
+*** About This Translation ***
+"Translation:Version" = "1.0";
+"Translation:Author" = "Default Tracker Language";
+"Translation:Link" = "http://newfs.mlotz.ch/";
+"Translation:LinkLabel" = "Tracker.NewFS Project Page";
+"Translation:eMail" = "mmlr@mlotz.ch";
+
+*** If a string is not found, the original will be used, so we don't include anything here ***

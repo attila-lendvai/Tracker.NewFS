@@ -1,40 +1,49 @@
-// Open Tracker License
-//
-// Terms and Conditions
-//
-// Copyright (c) 1991-2000, Be Incorporated. All rights reserved.
-//
-// Permission is hereby granted, free of charge, to any person obtaining a copy of
-// this software and associated documentation files (the "Software"), to deal in
-// the Software without restriction, including without limitation the rights to
-// use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
-// of the Software, and to permit persons to whom the Software is furnished to do
-// so, subject to the following conditions:
-// 
-// The above copyright notice and this permission notice applies to all licensees
-// and shall be included in all copies or substantial portions of the Software.
-// 
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF TITLE, MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
-// BE INCORPORATED BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
-// AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION
-// WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-//
-// Except as contained in this notice, the name of Be Incorporated shall not be
-// used in advertising or otherwise to promote the sale, use or other dealings in
-// this Software without prior written authorization from Be Incorporated.
-// 
-// Tracker(TM), Be(R), BeOS(R), and BeIA(TM) are trademarks or registered trademarks
-// of Be Incorporated in the United States and other countries. Other brand product
-// names are registered trademarks or trademarks of their respective holders.
-// All rights reserved.
+/*
+Open Tracker License
 
-#include "FSUtils.h"
+Terms and Conditions
+
+Copyright (c) 1991-2000, Be Incorporated. All rights reserved.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+of the Software, and to permit persons to whom the Software is furnished to do
+so, subject to the following conditions:
+
+The above copyright notice and this permission notice applies to all licensees
+and shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF TITLE, MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+BE INCORPORATED BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
+AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION
+WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+Except as contained in this notice, the name of Be Incorporated shall not be
+used in advertising or otherwise to promote the sale, use or other dealings in
+this Software without prior written authorization from Be Incorporated.
+
+Tracker(TM), Be(R), BeOS(R), and BeIA(TM) are trademarks or registered trademarks
+of Be Incorporated in the United States and other countries. Other brand product
+names are registered trademarks or trademarks of their respective holders.
+All rights reserved.
+*/
+
+#include <memory>
+
 #include "Attributes.h"
-#include "ThreadMagic.h"
+#include "Commands.h"
+#include "FSUtils.h"
+#include "FSContext.h"
+#include "LanguageTheme.h"
 #include "OverrideAlert.h"
+#include "TFSContext.h"
+#include "ThreadMagic.h"
 #include "Tracker.h"
+#include "TrackerString.h"
 
 #include <Roster.h>
 #include <Alert.h>
@@ -58,12 +67,12 @@ ReadAttr(const BNode &node, const char *hostAttrName, const char *foreignAttrNam
 	if (!isForeign && node.ReadAttr(hostAttrName, type, offset, buffer, length) == (ssize_t)length)
 		return kReadAttrNativeOK;
 
-	// PRINT(("trying %s\n", foreignAttrName));
+	PRINT(("trying %s\n", foreignAttrName));
 	// try the other endianness	
 	if (node.ReadAttr(foreignAttrName, type, offset, buffer, length) != (ssize_t)length)
 		return kReadAttrFailed;
 	
-	// PRINT(("got %s\n", foreignAttrName));
+	PRINT(("got %s\n", foreignAttrName));
 	if (swapFunc)
 		(swapFunc)(buffer);		// run the endian swapper
 
@@ -159,8 +168,7 @@ _TrackerLaunchAppWithDocuments(const entry_ref &appRef, const BMessage &refs, bo
 	team_id team;
 
 	status_t error = B_ERROR;
-	BString alertString;
-
+	
 	for (int32 mimesetIt = 0; ; mimesetIt++) {
 		error = be_roster->Launch(&appRef, &refs, &team);
 		if (error == B_ALREADY_RUNNING)
@@ -185,22 +193,25 @@ _TrackerLaunchAppWithDocuments(const entry_ref &appRef, const BMessage &refs, bo
 		if (nodeToClose)
 			dynamic_cast<TTracker *>(be_app)->CloseParent(*nodeToClose);
 	} else {
-		alertString << "Could not open \"" << appRef.name << "\" (" << strerror(error) << "). ";
+		char buffer[1024];
 		if (refs.what != 12345678 && openWithOK) {
-			alertString << kFindAlternativeStr;
-			if ((new BAlert("", alertString.String(), "Cancel", "Find", 0,
+			sprintf(buffer, LOCALE("Could not open \"%s\" (%s). %s"), appRef.name, strerror(error), LOCALE(kFindAlternativeStr));
+			if ((new BAlert("", buffer, LOCALE("Cancel"), LOCALE("Find"), 0,
 					B_WIDTH_AS_USUAL, B_WARNING_ALERT))->Go() == 1)
 				error = TrackerOpenWith(&refs);
-		} else
-			(new BAlert("", alertString.String(), "Cancel", 0, 0,
+		} else {
+			sprintf(buffer, LOCALE("Could not open \"%s\" (%s). %s"), appRef.name, strerror(error), "");
+			(new BAlert("", buffer, LOCALE("Cancel"), 0, 0,
 				B_WIDTH_AS_USUAL, B_WARNING_ALERT))->Go();
+		}
 	}
 }
 
 extern "C" char** environ;
-extern "C" _IMPEXP_ROOT status_t _kload_image_etc_(int argc, char **argv, char **envp,
-	char *buf, int bufsize);
-
+#ifndef __HAIKU__
+extern "C" _IMPEXP_ROOT status_t _kload_image_etc_(int argc, char **argv,
+	char **envp, char *buf, int bufsize);
+#endif
 
 static status_t
 LoaderErrorDetails(const entry_ref *app, BString &details)
@@ -214,7 +225,14 @@ LoaderErrorDetails(const entry_ref *app, BString &details)
 	
 	char *argv[2] = { const_cast<char *>(path.Path()), 0};
 
+#ifdef __HAIKU__
+	// ToDo: do this correctly!
+	result = load_image(1, (const char **)argv, (const char **)environ);
+	details.SetTo("ToDo: this is missing from Haiku");
+#else
 	result = _kload_image_etc_(1, argv, environ, details.LockBuffer(1024), 1024);
+	details.UnlockBuffer();
+#endif
 	details.UnlockBuffer();
 
 	return B_OK;
@@ -234,11 +252,11 @@ _TrackerLaunchDocuments(const entry_ref &/*doNotUse*/, const BMessage &refs,
 	status_t error = B_ERROR;
 	entry_ref app;
 	BMessage *refsToPass = NULL;
-	BString alertString;
+	char buffer[1024];
 	const char *alternative = 0;
 
 	for (int32 mimesetIt = 0; ; mimesetIt++) {
-		alertString = "";
+		buffer[0] = 0;
 		error = be_roster->FindApp(&documentRef, &app);
 			
 		if (error != B_OK && mimesetIt == 0) {
@@ -248,8 +266,9 @@ _TrackerLaunchDocuments(const entry_ref &/*doNotUse*/, const BMessage &refs,
 	
 		
 		if (error != B_OK) {
-			alertString << "Could not find an application to open \"" << documentRef.name
-				<< "\" (" << strerror(error) << "). ";
+			char buffer[1024];
+			sprintf(buffer, LOCALE("Could not find an application to open \"%s\" (%s)."),
+					documentRef.name, strerror(error));
 			if (openWithOK)
 				alternative = kFindApplicationStr;
 
@@ -288,7 +307,7 @@ _TrackerLaunchDocuments(const entry_ref &/*doNotUse*/, const BMessage &refs,
 		}
 	}
 	
-	if (error != B_OK && alertString.Length() == 0) {
+	if (error != B_OK && strlen(buffer) == 0) {
 		BString loaderErrorString;
 		bool openedDocuments = true;
 	
@@ -300,34 +319,57 @@ _TrackerLaunchDocuments(const entry_ref &/*doNotUse*/, const BMessage &refs,
 		}
 
 		if (error == B_LAUNCH_FAILED_EXECUTABLE && !refsToPass) {
-			alertString << "Could not open \"" << app.name
-				<< "\". The file is mistakenly marked as executable. ";
+			if (!openWithOK) {
+				// offer the possibility to change the permissions
+				sprintf(buffer, LOCALE("Could not open \"%s\". The file is mistakenly marked as executable. %s"),
+						app.name, LOCALE("\nShould this be fixed?"));
+				if ((new BAlert("", buffer, LOCALE("Cancel"), LOCALE("Proceed"), 0,
+						B_WIDTH_AS_USUAL, B_WARNING_ALERT))->Go() == 1) {
+					BEntry entry(&documentRef);
+					mode_t permissions;
+					
+					error = entry.GetPermissions(&permissions);
+					if (error == B_OK)
+						error = entry.SetPermissions(permissions & ~(S_IXUSR | S_IXGRP | S_IXOTH));
+					if (error == B_OK) {
+						// we updated the permissions, so let's try again
+						entry_ref entry;
+						_TrackerLaunchDocuments(entry, refs, false);
+						return;
+					} else {
+						sprintf(buffer, LOCALE("Could not update permissions of file \"%s\" (%s)."),
+								app.name, strerror(error));
+					}
+				} else
+					return;
+			}
+
 			alternative = kFindApplicationStr;
 		} else if (error == B_LAUNCH_FAILED_APP_IN_TRASH) {
-			alertString << "Could not open \"" << documentRef.name
-				<< "\" because application \"" << app.name << "\" is in the trash. ";
+			sprintf(buffer, LOCALE("Could not open \"%s\" because application \"%s\" is in the trash."),
+					documentRef.name, app.name);
 			alternative = kFindAlternativeStr;
 		} else if (error == B_LAUNCH_FAILED_APP_NOT_FOUND) {
-			alertString << "Could not open \"" << documentRef.name << "\" "
-				<< "(" << strerror(error) << "). ";
+			sprintf(buffer, LOCALE("Could not open \"%s\" (%s)."),
+					documentRef.name, strerror(error));
 			alternative = kFindAlternativeStr;
 		} else if (error == B_MISSING_SYMBOL
 			&& LoaderErrorDetails(&app, loaderErrorString) == B_OK) {
-			alertString << "Could not open \"" << documentRef.name << "\" ";
-			if (openedDocuments)
-				alertString << "with application \"" << app.name << "\" ";
-			alertString << "(Missing symbol: " << loaderErrorString << "). \n";
+			sprintf(buffer, LOCALE("Could not open \"%s\" %s%s%s%s(Missing symbol: %s).\n"),
+					documentRef.name, (openedDocuments ? LOCALE("with application") : ""),
+					(openedDocuments ? " \"" : ""), (openedDocuments ? app.name : ""),
+					(openedDocuments ? "\" " : ""), loaderErrorString.String());
 			alternative = kFindAlternativeStr;
 		} else if (error == B_MISSING_LIBRARY
 			&& LoaderErrorDetails(&app, loaderErrorString) == B_OK) {
-			alertString << "Could not open \"" << documentRef.name << "\" ";
-			if (openedDocuments)
-				alertString << "with application \"" << app.name << "\" ";
-			alertString << "(Missing library: " << loaderErrorString << "). \n";
+			sprintf(buffer, LOCALE("Could not open \"%s\" %s%s%s%s(Missing library: %s).\n"),
+					documentRef.name, (openedDocuments ? LOCALE("with application") : ""),
+					(openedDocuments ? " \"" : ""), (openedDocuments ? app.name : ""),
+					(openedDocuments ? "\" " : ""), loaderErrorString.String());
 			alternative = kFindAlternativeStr;
 		} else {
-			alertString << "Could not open \"" << documentRef.name
-				<< "\" with application \"" << app.name << "\" (" << strerror(error) << "). ";
+			sprintf(buffer, LOCALE("Could not open \"%s\" with application \"%s\" (%s).\n"),
+					documentRef.name, app.name, strerror(error));
 			alternative = kFindAlternativeStr;
 		}
 	}
@@ -335,12 +377,13 @@ _TrackerLaunchDocuments(const entry_ref &/*doNotUse*/, const BMessage &refs,
 	if (error != B_OK) {
 		if (openWithOK) {
 			ASSERT(alternative);
-			alertString << alternative;
-			if ((new BAlert("", alertString.String(), "Cancel", "Find", 0,
+			char message[2048];
+			sprintf(message, "%s%s", buffer, LOCALE(alternative));
+			if ((new BAlert("", message, LOCALE("Cancel"), LOCALE("Find"), 0,
 					B_WIDTH_AS_USUAL, B_WARNING_ALERT))->Go() == 1)
 				error = TrackerOpenWith(&refs);
 		} else 
-			(new BAlert("", alertString.String(), "Cancel", 0, 0,
+			(new BAlert("", buffer, LOCALE("Cancel"), 0, 0,
 					B_WIDTH_AS_USUAL, B_WARNING_ALERT))->Go();
 	}
 }
@@ -391,70 +434,6 @@ LaunchBrokenLink(const char *signature, const BMessage *refs)
 	// broken refs for cifs
 	be_roster->Launch(signature, const_cast<BMessage *>(refs));
 	return B_OK;
-}
-
-// external launch calls; need to be robust, work if Tracker is not running
-
-_IMPEXP_TRACKER status_t 
-FSLaunchItem(const entry_ref *application, const BMessage *refsReceived,
-	bool async, bool openWithOK)
-{
-	return TrackerLaunch(application, refsReceived, async, openWithOK);
-}
-
-
-_IMPEXP_TRACKER status_t 
-FSOpenWith(BMessage *listOfRefs)
-{
-	status_t result = B_ERROR;
-	listOfRefs->what = B_REFS_RECEIVED;
-	
-	if (dynamic_cast<TTracker *>(be_app)) 
-		result = TrackerOpenWith(listOfRefs);
-	else 
-		ASSERT(!"not yet implemented");
-
-	return result;
-}
-
-// legacy calls, need for compatibility
-
-void 
-FSOpenWithDocuments(const entry_ref *executable, BMessage *documents)
-{
-	TrackerLaunch(executable, documents, true);
-	delete documents;
-}
-
-status_t
-FSLaunchUsing(const entry_ref *ref, BMessage *listOfRefs)
-{
-	BMessage temp(B_REFS_RECEIVED);
-	if (!listOfRefs) {
-		ASSERT(ref);
-		temp.AddRef("refs", ref);
-		listOfRefs = &temp;
-	}
-	FSOpenWith(listOfRefs);
-	return B_OK;
-}
-
-status_t
-FSLaunchItem(const entry_ref *ref, BMessage* message, int32, bool async)
-{
-	if (message) 
-		message->what = B_REFS_RECEIVED;
-
-	status_t result = TrackerLaunch(ref, message, async, true);
-	delete message;
-	return result;
-}
-
-
-void
-FSLaunchItem(const entry_ref *ref, BMessage *message, int32 workspace)
-{
-	FSLaunchItem(ref, message, workspace, true);
 }
 
 directory_which 
@@ -578,7 +557,6 @@ WellKnowEntryList::WellKnowEntryList()
 		"Downloads");
 }
 
-
 bool 
 DirectoryMatchesOrContains(const BEntry *entry, directory_which which)
 {
@@ -649,7 +627,6 @@ DirectoryMatches(const BEntry *entry, const char *additionalPath, directory_whic
 	return dirEntry == *entry;
 }
 
-
 enum {
 	kNotConfirmed,
 	kConfirmedHomeMove,
@@ -664,7 +641,10 @@ ConfirmChangeIfWellKnownDirectory(const BEntry *entry, const char *action,
 	//
 	// This is a cheap replacement for having a real UID support turned
 	// on and not running as root all the time
-
+	
+	if (!gTrackerSettings.WarnInWellKnownDirectories())
+		return true;
+	
 	if (confirmedAlready && *confirmedAlready == kConfirmedAll)
 		return true;
 
@@ -677,38 +657,31 @@ ConfirmChangeIfWellKnownDirectory(const BEntry *entry, const char *action,
 	bool requireOverride = true;
 
 	if (DirectoryMatches(entry, B_BEOS_DIRECTORY))
-		warning = "If you %s the beos folder, you won't be able to "
-			"boot BeOS! Are you sure you want to do this? To %s the folder "
-			"anyway, hold down the Shift key and click \"Do it\".";
+		warning = LOCALE("If you %s the beos folder, you won't be able to "
+			"boot BeOS!");
 	else if (DirectoryMatchesOrContains(entry, B_BEOS_SYSTEM_DIRECTORY))
-		warning = "If you %s the system folder or its contents, you "
-			"won't be able to boot BeOS! Are you sure you want to do this? "
-			"To %s the system folder or its contents anyway, hold down "
-			"the Shift key and click \"Do it\".";
+		warning = LOCALE("If you %s the system folder or its contents, you probably "
+			"won't be able to boot BeOS!");
 	else if (DirectoryMatches(entry, B_USER_DIRECTORY)) {
-		warning = "If you %s the home folder, BeOS may not "
-			"behave properly! Are you sure you want to do this? "
-			"To %s the home anyway, click \"Do it\".";
+		warning = LOCALE("If you %s the home folder, BeOS may not "
+			"behave properly!");
 		requireOverride = false;
 	} else if (DirectoryMatchesOrContains(entry, B_USER_CONFIG_DIRECTORY)
 		|| DirectoryMatchesOrContains(entry, B_COMMON_SETTINGS_DIRECTORY)) {
 		
 		if (DirectoryMatchesOrContains(entry, "beos_mime", B_USER_SETTINGS_DIRECTORY)
 			|| DirectoryMatchesOrContains(entry, "beos_mime", B_COMMON_SETTINGS_DIRECTORY)) {
-			warning = "If you %s the mime settings, BeOS may not "
-				"behave properly! Are you sure you want to do this? "
-				"To %s the mime settings anyway, click \"Do it\".";
+			warning = LOCALE("If you %s the mime settings, BeOS may not "
+				"behave properly!");
 			requireOverride = false;
 		} else if (DirectoryMatches(entry, B_USER_CONFIG_DIRECTORY)) {
-			warning = "If you %s the config folder, BeOS may not "
-				"behave properly! Are you sure you want to do this? "
-				"To %s the config folder anyway, click \"Do it\".";
+			warning = LOCALE("If you %s the config folder, BeOS may not "
+				"behave properly!");
 			requireOverride = false;
 		} else if (DirectoryMatches(entry, B_USER_SETTINGS_DIRECTORY)
 			|| DirectoryMatches(entry, B_COMMON_SETTINGS_DIRECTORY)) {
-			warning = "If you %s the settings folder, BeOS may not "
-				"behave properly! Are you sure you want to do this? "
-				"To %s the settings folder anyway, click \"Do it\".";
+			warning = LOCALE("If you %s the settings folder, BeOS may not "
+				"behave properly!");
 			requireOverride = false;
 		}
 	}
@@ -724,11 +697,21 @@ ConfirmChangeIfWellKnownDirectory(const BEntry *entry, const char *action,
 		// we already warned about moving home this time around
 		return true;
 
-	char buffer[256];
-	sprintf(buffer, warning, action, action);
-
-	if ((new OverrideAlert("", buffer, "Do it", (requireOverride ? B_SHIFT_KEY : 0),
-		"Cancel", 0, NULL, 0, B_WIDTH_AS_USUAL, B_WARNING_ALERT))->Go() == 1) {
+	const char *explanation = "";
+	if (requireOverride)
+		explanation = LOCALE("Are you sure you want to do this? To do it "
+			"anyway, hold down the Shift key and click \"Do it\".");
+	else
+		explanation = LOCALE("Are you sure you want to do this? To do it "
+			"anyway click \"Do it\".");
+	
+	char buffer[2048];
+	sprintf(buffer, warning, LOCALE(action));
+	strcat(buffer, "\n");
+	strcat(buffer, explanation);
+	
+	if ((new OverrideAlert("", buffer, LOCALE("Do it"), (requireOverride ? B_SHIFT_KEY : 0),
+		LOCALE("Cancel"), 0, NULL, 0, B_WIDTH_AS_USUAL, B_WARNING_ALERT))->Go() == 1) {
 		if (confirmedAlready)
 			*confirmedAlready = kNotConfirmed;
 		return false;
@@ -743,5 +726,265 @@ ConfirmChangeIfWellKnownDirectory(const BEntry *entry, const char *action,
 
 	return true;
 }
+
+// ----------------------------- OT libtracker compatibility only!
+
+status_t
+MoveTask(BObjectList<entry_ref> *srcList, BEntry *destEntry, BList */*pointList*/, uint32 moveMode)
+{
+	auto_ptr<TFSContext> tfscontext(new TFSContext(srcList));
+	
+	if ((moveMode == kMoveSelectionTo && !destEntry)
+		|| fs::FSContext::IsTrashDir(destEntry)) {
+		tfscontext.release()->MoveToTrash(true);
+	} else {
+		BDirectory target_dir(destEntry);
+		if (target_dir.InitCheck() != B_OK)
+			return B_ERROR;
+	
+		// all of them are async
+		switch (moveMode) {
+			case kCopySelectionTo:
+				tfscontext.release()->CopyTo(target_dir, true);
+				break;
+				
+			case kCreateRelativeLink:
+				tfscontext.release()->CreateLinkTo(target_dir, true, true);
+				break;
+				
+			case kCreateLink:
+				tfscontext.release()->CreateLinkTo(target_dir, false, true);
+				break;
+
+			case kMoveSelectionTo:
+				tfscontext.release()->MoveTo(target_dir, true);
+				break;
+		}
+	}
+	
+	return B_OK;
+}
+
+_IMPEXP_TRACKER status_t
+FSCopyAttributesAndStats(BNode *srcNode, BNode *destNode)
+{
+	char *buffer = new char[1024];
+	
+	// copy the attributes
+	srcNode->RewindAttrs();
+	char name[256];
+	while (srcNode->GetNextAttrName(name) == B_OK) {
+		attr_info info;
+		if (srcNode->GetAttrInfo(name, &info) != B_OK)
+			continue;
+			
+		attr_info dest_info;
+		if (destNode->GetAttrInfo(name, &dest_info) == B_OK)
+			continue;
+			
+		ssize_t bytes;
+		ssize_t numToRead = (ssize_t)info.size;
+		for (off_t offset = 0; numToRead > 0; offset += bytes) {
+			size_t chunkSize = (size_t)numToRead;
+			if (chunkSize > 1024)
+				chunkSize = 1024;
+
+			bytes = srcNode->ReadAttr(name, info.type, offset, buffer, chunkSize);
+
+			if (bytes <= 0) 
+				break;
+			
+			destNode->WriteAttr(name, info.type, offset, buffer, (size_t)bytes);
+
+			numToRead -= bytes;
+		}
+	}
+	delete[] buffer;
+		
+	// copy the file stats
+	struct stat srcStat;
+	srcNode->GetStat(&srcStat);
+	destNode->SetPermissions(srcStat.st_mode);
+	destNode->SetOwner(srcStat.st_uid);
+	destNode->SetGroup(srcStat.st_gid);
+	destNode->SetModificationTime(srcStat.st_mtime);
+	destNode->SetCreationTime(srcStat.st_crtime);
+	
+	return B_OK;
+}
+
+_IMPEXP_TRACKER void 
+FSMakeOriginalName(BString &string, const BDirectory *destDir, const char *suffix)
+{
+	if (!destDir->Contains(string.String()))
+		return;
+
+	FSMakeOriginalName(string.LockBuffer(B_FILE_NAME_LENGTH),
+		const_cast<BDirectory *>(destDir), suffix ? suffix : LOCALE(" copy"));
+	string.UnlockBuffer();
+}
+
+_IMPEXP_TRACKER void
+FSMakeOriginalName(char *name, BDirectory *destDir, const char *suffix)
+{
+	fs::FSContext::MakeUniqueName(*destDir, name, suffix);
+}
+
+_IMPEXP_TRACKER bool
+FSIsTrashDir(const BEntry *entry)
+{
+	return fs::FSContext::IsTrashDir(*entry);
+}
+
+_IMPEXP_TRACKER bool
+FSIsPrintersDir(const BEntry *entry)
+{
+	return fs::FSContext::IsPrintersDir(*entry);
+}
+
+_IMPEXP_TRACKER bool 
+FSIsDeskDir(const BEntry *entry, dev_t /*device*/)
+{
+	return fs::FSContext::IsDesktopDir(*entry);
+}
+
+_IMPEXP_TRACKER bool
+FSIsSystemDir(const BEntry *entry)
+{
+	return fs::FSContext::IsSystemDir(*entry);
+}
+
+_IMPEXP_TRACKER bool
+FSIsBeOSDir(const BEntry *entry)
+{
+	return fs::FSContext::IsBeOSDir(*entry);
+}
+
+_IMPEXP_TRACKER bool
+FSIsHomeDir(const BEntry *entry)
+{
+	return fs::FSContext::IsHomeDir(*entry);
+}
+
+_IMPEXP_TRACKER void
+FSEmptyTrash()
+{
+	TFSContext().EmptyTrash();
+}
+
+_IMPEXP_TRACKER status_t
+FSCreateNewFolderIn(const node_ref *dirNode, entry_ref *newRef, node_ref *newNode)
+{
+	TFSContext::CreateNewFolder(*dirNode, LOCALE("New Folder"), newRef, newNode);
+	return B_OK;
+}
+
+_IMPEXP_TRACKER status_t
+FSGetTrashDir(BDirectory* trash_dir, dev_t dev)
+{
+	return fs::FSContext::GetTrashDir(*trash_dir, dev);
+}
+
+_IMPEXP_TRACKER status_t
+FSGetDeskDir(BDirectory *deskDir, dev_t dev)
+{
+	return fs::FSContext::GetDesktopDir(*deskDir, dev);
+}
+
+_IMPEXP_TRACKER void
+FSMoveToFolder(BObjectList<entry_ref> *srcList, BEntry *destEntry, uint32 moveMode, BList *pointList)
+{
+	if (srcList->IsEmpty()) {
+		delete srcList;
+		delete pointList;
+		delete destEntry;
+		return;
+	}
+	
+	LaunchInNewThread("MoveTask", B_NORMAL_PRIORITY, MoveTask, srcList, destEntry,
+		pointList, moveMode);	
+}
+
+_IMPEXP_TRACKER void
+FSMoveToTrash(BObjectList<entry_ref> *srcList, BList *pointList, bool async)
+{
+	if (srcList->IsEmpty()) {
+		delete srcList;
+		delete pointList;
+		return;
+	}
+	if (async) 
+		LaunchInNewThread("MoveTask", B_NORMAL_PRIORITY, MoveTask, srcList,
+			(BEntry *)0, pointList, kMoveSelectionTo);
+	else
+		MoveTask(srcList, 0, pointList, kMoveSelectionTo);
+}
+
+_IMPEXP_TRACKER void
+FSDuplicate(BObjectList<entry_ref> *srcList, BList *pointList)
+{
+	LaunchInNewThread("DuplicateTask", B_NORMAL_PRIORITY, MoveTask, srcList, (BEntry *)NULL,
+		pointList, kDuplicateSelection);
+}
+
+_IMPEXP_TRACKER void 
+FSOpenWithDocuments(const entry_ref *executable, BMessage *documents)
+{
+	TrackerLaunch(executable, documents, true);
+	delete documents;
+}
+
+_IMPEXP_TRACKER status_t
+FSLaunchUsing(const entry_ref *ref, BMessage *listOfRefs)
+{
+	BMessage temp(B_REFS_RECEIVED);
+	if (!listOfRefs) {
+		ASSERT(ref);
+		temp.AddRef("refs", ref);
+		listOfRefs = &temp;
+	}
+	FSOpenWith(listOfRefs);
+	return B_OK;
+}
+
+_IMPEXP_TRACKER status_t 
+FSLaunchItem(const entry_ref *application, const BMessage *refsReceived,
+	bool async, bool openWithOK)
+{
+	return TrackerLaunch(application, refsReceived, async, openWithOK);
+}
+
+_IMPEXP_TRACKER status_t
+FSLaunchItem(const entry_ref *ref, BMessage* message, int32, bool async)
+{
+	if (message) 
+		message->what = B_REFS_RECEIVED;
+
+	status_t result = TrackerLaunch(ref, message, async, true);
+	delete message;
+	return result;
+}
+
+_IMPEXP_TRACKER void
+FSLaunchItem(const entry_ref *ref, BMessage *message, int32 workspace)
+{
+	FSLaunchItem(ref, message, workspace, true);
+}
+
+_IMPEXP_TRACKER status_t 
+FSOpenWith(BMessage *listOfRefs)
+{
+	status_t result = B_ERROR;
+	listOfRefs->what = B_REFS_RECEIVED;
+	
+	if (dynamic_cast<TTracker *>(be_app)) 
+		result = TrackerOpenWith(listOfRefs);
+	else 
+		ASSERT(!"not yet implemented");
+
+	return result;
+}
+
+// ----------------------------- OT libtracker compatibility
 
 }	// namespace BPrivate

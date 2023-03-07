@@ -34,6 +34,7 @@ All rights reserved.
 
 // Implementation for the public FilePanel object.
 
+#include "Defines.h"
 #include <Debug.h>
 #include <FilePanel.h>
 
@@ -42,13 +43,8 @@ All rights reserved.
 #include "FilePanelPriv.h"
 
 // prototypes for some private kernel calls that will some day be public
-#if B_BEOS_VERSION_DANO
-#define _IMPEXP_ROOT
-#endif
+
 extern "C" _IMPEXP_ROOT int _kset_fd_limit_(int num);
-#if B_BEOS_VERSION_DANO
-#undef _IMPEXP_ROOT
-#endif
 
 void
 run_open_panel()

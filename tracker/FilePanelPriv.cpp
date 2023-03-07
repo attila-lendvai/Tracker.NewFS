@@ -69,8 +69,10 @@ All rights reserved.
 #include "FSUtils.h"
 #include "FSClipboard.h"
 #include "IconMenuItem.h"
+#include "LanguageTheme.h"
 #include "MimeTypes.h"
 #include "NavMenu.h"
+#include "Navigator.h"
 #include "PoseView.h"
 #include "Tracker.h"
 #include "tracker_private.h"
@@ -148,6 +150,7 @@ TFilePanel::TFilePanel(file_panel_mode mode, BMessenger *target,
 	fIsTrackingMenu(false),
 	fConfigWindow(NULL)
 {
+	gLanguageTheme = new LanguageTheme();
 	InitIconPreloader();
 
 	fIsSavePanel = (mode == B_SAVE_PANEL);
@@ -208,6 +211,7 @@ TFilePanel::TFilePanel(file_panel_mode mode, BMessenger *target,
 
 	AutoLock<BWindow> lock(this);
 	CreatePoseView(model);
+	fPoseView->CheckDynamicFiltering();
 	fPoseView->SetRefFilter(filter);
 	if (!fIsSavePanel)
 		fPoseView->SetMultipleSelection(multipleSelection);
@@ -442,7 +446,7 @@ TFilePanel::SetTo(const entry_ref *ref)
 
 	entry_ref setToRef(*ref);
 
-	bool isDesktop = SwitchDirToDesktopIfNeeded(setToRef);
+	SwitchDirToDesktopIfNeeded(setToRef);
 
 	BEntry entry(&setToRef);
 	if (entry.InitCheck() != B_OK || !entry.IsDirectory())
@@ -450,7 +454,7 @@ TFilePanel::SetTo(const entry_ref *ref)
 
 	SwitchDirMenuTo(&setToRef);
 
-	PoseView()->SetIsDesktop(isDesktop);
+	PoseView()->SetIsDesktop(TFSContext::IsDesktopDir(entry));
 	fPoseView->SwitchDir(&setToRef);
 
 	AddShortcut('H', B_COMMAND_KEY, new BMessage(kSwitchToHome));
@@ -495,7 +499,11 @@ TFilePanel::AdjustButton()
 				Model *model = selectionList->FirstItem()->TargetModel();
 				if (model->ResolveIfLink()->IsDirectory()) {
 					enabled = true;
-					buttonText = "Open";
+					buttonText = LOCALE("Open");
+				} else {
+					// insert the name of the selected model into the text field
+					textControl->SetText(model->Name());
+					//textControl->MakeFocus();
 				}
 			}
 		} else
@@ -570,33 +578,28 @@ TFilePanel::Init(const BMessage *)
 {
 	BRect windRect(Bounds());
 	AddChild(fBackView = new BackgroundView(windRect));
-
+	
 	// add poseview menu bar
 	fMenuBar = new BMenuBar(BRect(0, 0, windRect.Width(), 1), "MenuBar");
 	fMenuBar->SetBorder(B_BORDER_FRAME);
 	fBackView->AddChild(fMenuBar);
 
+	fMoveToItem = new BMenuItem(new BNavMenu(LOCALE("Move to"), kMoveSelectionTo, this));
+	fCopyToItem = new BMenuItem(new BNavMenu(LOCALE("Copy to"), kCopySelectionTo, this));
+	fCreateLinkItem = new BMenuItem(new BNavMenu(LOCALE("Create Link"), kCreateLink, this),
+		new BMessage(kCreateLink));
+
 	AddMenus();
 	AddContextMenus();
-
-	FavoritesMenu *favorites = new FavoritesMenu("Favorites",
-		new BMessage(kSwitchDirectory), new BMessage(B_REFS_RECEIVED),
-		BMessenger(this), IsSavePanel());
-	favorites->AddItem(new BMenuItem("Add Current Folder",
-		new BMessage(kAddCurrentDir)));
-	favorites->AddItem(new BMenuItem("Configure Favorites"B_UTF8_ELLIPSIS,
-		new BMessage(kConfigShow)));
-		
-	fMenuBar->AddItem(favorites);
-
+	
 	// configure menus
-	BMenuItem *item = fMenuBar->FindItem("Window");
+	BMenuItem *item = fMenuBar->FindItem(LOCALE("Window"));
 	if (item) {
 		fMenuBar->RemoveItem(item);
 		delete item;
 	}
 
-	item = fMenuBar->FindItem("File");
+/*	item = fMenuBar->FindItem(LOCALE("File"));
 	if (item) {
 		BMenu *menu = item->Submenu();
 		if (menu) {
@@ -625,7 +628,7 @@ TFilePanel::Init(const BMessage *)
 					delete item;
 			}
 		}
-	}
+	}*/
 
 	// add directory menu and menufield
 	fDirMenu = new BDirMenu(0, kSwitchDirectory, "refs");
@@ -635,7 +638,11 @@ TFilePanel::Init(const BMessage *)
 	float f_height = ht.ascent + ht.descent + ht.leading;
 
 	BRect rect;
-	rect.top = fMenuBar->Bounds().Height() + 2;
+	if (fNavigator) {
+		fNavigator->MoveTo(0, fMenuBar->Bounds().Height() + 1);
+		rect.top = fMenuBar->Bounds().Height() + fNavigator->CalcNavigatorHeight() + 2;
+	} else
+		rect.top = fMenuBar->Bounds().Height() + 2;
 	rect.left = windRect.left + 9;
 	rect.right = rect.left + 300;
 	rect.bottom = rect.top + (f_height > 22 ? f_height : 22);
@@ -673,12 +680,12 @@ TFilePanel::Init(const BMessage *)
 		fTextControl->SetDivider(0.0f);
 		fTextControl->TextView()->SetMaxBytes(B_FILE_NAME_LENGTH - 1);
 
-		fButtonText = "Save";
+		fButtonText = LOCALE("Save");
 	} else
-		fButtonText = "Open";
+		fButtonText = LOCALE("Open");
 
 	rect = windRect;
-	rect.OffsetTo(10, fMenuBar->Bounds().Height() * 2 + 16);
+	rect.OffsetTo(10, fMenuBar->Bounds().Height() * 2 + 16 + (fNavigator ? fNavigator->CalcNavigatorHeight() : 0));
 	rect.bottom = windRect.bottom - 60;
 	rect.right -= B_V_SCROLL_BAR_WIDTH + 20;
 
@@ -694,8 +701,8 @@ TFilePanel::Init(const BMessage *)
 	PoseView()->MoveTo(rect.LeftTop());
 	PoseView()->ResizeTo(rect.Width(), rect.Height());
 	PoseView()->AddScrollBars();
-	PoseView()->SetDragEnabled(false);
-	PoseView()->SetDropEnabled(false);
+	PoseView()->SetDragEnabled(true);
+	PoseView()->SetDropEnabled(true);
 	PoseView()->SetSelectionHandler(this);
 	PoseView()->SetSelectionChangedHook(true);
 	PoseView()->DisableSaveLocation();
@@ -721,10 +728,10 @@ TFilePanel::Init(const BMessage *)
 	fBackView->AddChild(default_button);
 	
 	rect.right = rect.left -= 10;
-	float cancel_width = be_plain_font->StringWidth("Cancel") + 20;
+	float cancel_width = be_plain_font->StringWidth(LOCALE("Cancel")) + 20;
 	rect.left = (cancel_width > 75) ? (rect.right - cancel_width) : (rect.right - 75);
 	
-	BButton *cancel_button = new BButton(rect, "cancel button", "Cancel",
+	BButton *cancel_button = new BButton(rect, "cancel button", LOCALE("Cancel"),
 		new BMessage(kCancelButton), B_FOLLOW_RIGHT + B_FOLLOW_BOTTOM);
 	fBackView->AddChild(cancel_button);
 	
@@ -827,64 +834,21 @@ TFilePanel::RestoreWindowState(const BMessage &message)
 void 
 TFilePanel::AddFileContextMenus(BMenu *menu)
 {
-	menu->AddItem(new BMenuItem("Get Info", new BMessage(kGetInfo), 'I'));
-	menu->AddItem(new BMenuItem("Edit Name", new BMessage(kEditItem), 'E'));
-	menu->AddItem(new BMenuItem(TrackerSettings().DontMoveFilesToTrash() ?
-			"Delete" : "Move to Trash",
-			new BMessage(kMoveToTrash), 'T'));
-	menu->AddSeparatorItem();
-	menu->AddItem(new BMenuItem("Cut", new BMessage(B_CUT), 'X'));
-	menu->AddItem(new BMenuItem("Copy", new BMessage(B_COPY), 'C'));
-//	menu->AddItem(pasteItem = new BMenuItem("Paste", new BMessage(B_PASTE), 'V'));
-
-	menu->SetTargetForItems(PoseView());
+	_inherited::AddFileContextMenus(menu);
 }
 
 
 void 
 TFilePanel::AddVolumeContextMenus(BMenu *menu)
 {	
-	menu->AddItem(new BMenuItem("Open", new BMessage(kOpenSelection), 'O'));
-	menu->AddItem(new BMenuItem("Get Info", new BMessage(kGetInfo), 'I'));
-	menu->AddItem(new BMenuItem("Edit Name", new BMessage(kEditItem), 'E'));
-	menu->AddSeparatorItem();
-	menu->AddItem(new BMenuItem("Cut", new BMessage(B_CUT), 'X'));
-	menu->AddItem(new BMenuItem("Copy", new BMessage(B_COPY), 'C'));
-//	menu->AddItem(pasteItem = new BMenuItem("Paste", new BMessage(B_PASTE), 'V'));
-
-	menu->SetTargetForItems(PoseView());
+	_inherited::AddVolumeContextMenus(menu);
 }
 
 
 void
 TFilePanel::AddWindowContextMenus(BMenu *menu)
 {
-	BMenuItem *item = new BMenuItem("New Folder", new BMessage(kNewFolder), 'N');
-	item->SetTarget(PoseView());
-	menu->AddItem(item);
-	menu->AddSeparatorItem();
-
-	item = new BMenuItem("Paste", new BMessage(B_PASTE), 'V');
-	item->SetTarget(PoseView());
-	menu->AddItem(item);
-	menu->AddSeparatorItem();
-
-	item = new BMenuItem("Select"B_UTF8_ELLIPSIS, new BMessage(kShowSelectionWindow),
-		'A', B_SHIFT_KEY);
-	item->SetTarget(PoseView());
-	menu->AddItem(item);
-
-	item = new BMenuItem("Select All", new BMessage(B_SELECT_ALL), 'A');
-	item->SetTarget(PoseView());
-	menu->AddItem(item);
-
-	item = new BMenuItem("Invert Selection", new BMessage(kInvertSelection), 'S');
-	item->SetTarget(PoseView());
-	menu->AddItem(item);
-
-	item = new BMenuItem("Go To Parent", new BMessage(kOpenParentDir), B_UP_ARROW);
-	item->SetTarget(this);
-	menu->AddItem(item);
+	_inherited::AddWindowContextMenus(menu);
 }
 
 
@@ -897,12 +861,21 @@ TFilePanel::AddDropContextMenus(BMenu *)
 void
 TFilePanel::MenusBeginning()
 {
-	int32 count = PoseView()->SelectionList()->CountItems();
+	if (!fMenuBar)
+		return;
+
+	int32 selectCount = PoseView()->SelectionList()->CountItems();
+
+	// cleanup eventually left stuff first
+	MenusEnded();
 
 	EnableNamedMenuItem(fMenuBar, kNewFolder, !TargetModel()->IsRoot());
-	EnableNamedMenuItem(fMenuBar, kMoveToTrash, !TargetModel()->IsRoot() && count);
-	EnableNamedMenuItem(fMenuBar, kGetInfo, count != 0);
-	EnableNamedMenuItem(fMenuBar, kEditItem, count == 1);
+	EnableNamedMenuItem(fMenuBar, kMoveToTrash, !TargetModel()->IsRoot() && selectCount);
+	EnableNamedMenuItem(fMenuBar, kGetInfo, selectCount != 0);
+	EnableNamedMenuItem(fMenuBar, kEditItem, selectCount == 1);
+
+	SetupMoveCopyMenus(selectCount
+		? PoseView()->SelectionList()->FirstItem()->TargetModel()->EntryRef() : NULL, fEditMenu);
 
 	SetCutItem(fMenuBar);
 	SetCopyItem(fMenuBar);
@@ -915,6 +888,9 @@ TFilePanel::MenusBeginning()
 void 
 TFilePanel::MenusEnded()
 {
+	DeleteSubmenu(fMoveToItem);
+	DeleteSubmenu(fCopyToItem);
+	DeleteSubmenu(fCreateLinkItem);
 	fIsTrackingMenu = false;
 }
 
@@ -1012,9 +988,9 @@ TFilePanel::MessageReceived(BMessage *message)
 					// first is entered.
 					if (entry.IsDirectory()) {
 						entry.GetRef(&ref);
-						bool isDesktop = SwitchDirToDesktopIfNeeded(ref);
+						SwitchDirToDesktopIfNeeded(ref);
 
-						PoseView()->SetIsDesktop(isDesktop);
+						PoseView()->SetIsDesktop(TFSContext::IsDesktopDir(entry));
 						entry.SetTo(&ref);
 						PoseView()->SwitchDir(&ref);
 						SwitchDirMenuTo(&ref);
@@ -1034,8 +1010,8 @@ TFilePanel::MessageReceived(BMessage *message)
 							
 							// Don't allow saves of multiple files
 							if (count > 1) 
-								ShowCenteredAlert("Sorry, saving of more than one item is not allowed.",
-									"Cancel");
+								ShowCenteredAlert(LOCALE("Sorry, saving of more than one item is not allowed."),
+									LOCALE("Cancel"));
 							else {
 								// if we are a savepanel, set up the filepanel correctly
 								// then pass control so we follow the same path as if the user
@@ -1077,18 +1053,6 @@ TFilePanel::MessageReceived(BMessage *message)
 			}
 			break;
 			
-		case kSwitchToHome:
-			{
-				BPath homePath;
-				entry_ref ref;
-				if (find_directory(B_USER_DIRECTORY, &homePath) != B_OK
-					|| get_ref_for_path(homePath.Path(), &ref) != B_OK)
-					break;
-				
-				SetTo(&ref);
-			}
-			break;
-
 		case kAddCurrentDir:
 			{
 				BPath path;
@@ -1127,7 +1091,7 @@ TFilePanel::MessageReceived(BMessage *message)
 						entry.GetRef(&startref);
 						
 						int32 apps, docs, folders;
-						TrackerSettings().RecentCounts(&apps, &docs, &folders);
+						gTrackerSettings.RecentCounts(&apps, &docs, &folders);
 
 						//	if this is a save panel
 						//	then don't show recent docs controls
@@ -1135,7 +1099,7 @@ TFilePanel::MessageReceived(BMessage *message)
 							docs = -1;
 						
 						fConfigWindow = new TFavoritesConfigWindow(BRect(0, 0, 320, 24),
-							"Configure Favorites", Feel() == B_MODAL_APP_WINDOW_FEEL,
+							LOCALE("Configure Favorites"), Feel() == B_MODAL_APP_WINDOW_FEEL,
 							fNodeFlavors, BMessenger(this), &startref, -1, docs, folders);
 					}
 				}
@@ -1145,18 +1109,17 @@ TFilePanel::MessageReceived(BMessage *message)
 		case kConfigClose:
 			{
 				int32 count = 0;
-				TrackerSettings settings;
 
 				//	save off whatever was last in the fields
 				//	do this just in case someone didn't tab out
 				if (message->FindInt32("applications", &count) == B_OK)				
-					settings.SetRecentApplicationsCount(count);
+					gTrackerSettings.SetRecentApplicationsCount(count);
 				if (message->FindInt32("folders", &count) == B_OK)				
-					settings.SetRecentFoldersCount(count);
+					gTrackerSettings.SetRecentFoldersCount(count);
 				if (message->FindInt32("documents", &count) == B_OK)				
-					settings.SetRecentDocumentsCount(count);
+					gTrackerSettings.SetRecentDocumentsCount(count);
 					
-				settings.SaveSettings(false);
+				gTrackerSettings.SaveSettings(false);
 
 				fConfigWindow = NULL;
 			}
@@ -1168,22 +1131,22 @@ TFilePanel::MessageReceived(BMessage *message)
 			{
 				//	messages sent when the user changes the count
 				int32 count;
-				TrackerSettings settings;
 				
 				if (message->FindInt32("count", &count) == B_OK) {
 					if (message->what == kUpdateAppsCount) 
-						settings.SetRecentApplicationsCount(count);
+						gTrackerSettings.SetRecentApplicationsCount(count);
 					else if (message->what == kUpdateDocsCount) 
-						settings.SetRecentDocumentsCount(count);
+						gTrackerSettings.SetRecentDocumentsCount(count);
 					else if (message->what == kUpdateFolderCount) 
-						settings.SetRecentFoldersCount(count);
-					settings.SaveSettings(false);
+						gTrackerSettings.SetRecentFoldersCount(count);
+					
+					gTrackerSettings.SaveSettings(false);
 				}
 			}
 			break;
 			
 		case kCancelButton:
-			PostMessage(B_CLOSE_REQUESTED);
+			PostMessage(B_QUIT_REQUESTED);
 			break;
 
 		case kOpenDir:
@@ -1221,13 +1184,18 @@ TFilePanel::MessageReceived(BMessage *message)
 						{
 							bool desktopIsRoot = true;
 							message->FindBool("DesktopFilePanelRoot", &desktopIsRoot);
-							TrackerSettings().SetDesktopFilePanelRoot(desktopIsRoot);
+							gTrackerSettings.SetDesktopFilePanelRoot(desktopIsRoot);
 							SetTo(TargetModel()->EntryRef());
 							break;
 						}
 					}
 				}		
 			}
+			break;
+
+		case kClipboardPosesChanged:
+//			sleep(10);
+			PoseView()->MessageReceived(message);
 			break;
 
 		default:
@@ -1271,8 +1239,10 @@ TFilePanel::OpenParent()
 		
 		entry_ref ref;
 		parentEntry.GetRef(&ref);
-	
-		PoseView()->SetIsDesktop(SwitchDirToDesktopIfNeeded(ref));
+		SwitchDirToDesktopIfNeeded(ref);
+		BEntry checkEntry(&ref);
+		
+		PoseView()->SetIsDesktop(TFSContext::IsDesktopDir(checkEntry));
 		PoseView()->SwitchDir(&ref);
 		SwitchDirMenuTo(&ref);
 
@@ -1289,7 +1259,7 @@ TFilePanel::OpenParent()
 bool 
 TFilePanel::CanOpenParent() const
 {
-	if (TrackerSettings().DesktopFilePanelRoot()) {
+	if (gTrackerSettings.DesktopFilePanelRoot()) {
 		// don't allow opening Desktop folder's parent
 		BEntry entry(TargetModel()->EntryRef());
 		if (TFSContext::IsDesktopDir(entry))
@@ -1311,8 +1281,7 @@ TFilePanel::SwitchDirToDesktopIfNeeded(entry_ref &ref)
 	// support showing Desktop as root of everything
 	// This call implements the worm hole that maps Desktop as
 	// a root above the disks
-	TrackerSettings settings;
-	if (!settings.DesktopFilePanelRoot())
+	if (!gTrackerSettings.DesktopFilePanelRoot())
 		// Tracker isn't set up that way, just let Disks show
 		return false;
 		
@@ -1325,9 +1294,10 @@ TFilePanel::SwitchDirToDesktopIfNeeded(entry_ref &ref)
 
 	if ((bootVol.Device() != ref.device && TFSContext::IsDesktopDir(entry))
 		// navigated into non-boot desktop, switch to boot desktop
-		|| (entry == root && !settings.ShowDisksIcon())) {
+		|| (entry == root && !gTrackerSettings.ShowDisksIcon())) {
 		// hit "/" level, map to desktop
 
+		TFSContext::GetBootDesktopDir(desktopDir);
 		desktopDir.GetEntry(&entry);
 		entry.GetRef(&ref);
 		return true;
@@ -1374,40 +1344,42 @@ TFilePanel::HandleSaveButton()
 	BDirectory dir;
 
 	if (TargetModel()->IsRoot()) {
-		ShowCenteredAlert("Sorry, you can't save things at the root of "
-			"your system.", "Cancel");
+		ShowCenteredAlert(LOCALE("Sorry, you can't save things at the root of "
+			"your system."), LOCALE("Cancel"));
 		return;
 	}
 
 	// check for some illegal file names
 	if (strcmp(fTextControl->Text(), ".") == 0
 		|| strcmp(fTextControl->Text(), "..") == 0) {
-		ShowCenteredAlert("The name you have specified is illegal. Please type "
-			"another name.", "Cancel");
+		ShowCenteredAlert(LOCALE("The name you have specified is illegal. "
+			"Please type another name."), LOCALE("Cancel"));
 		fTextControl->TextView()->SelectAll();
 		return;
 	}
 
 	if (dir.SetTo(TargetModel()->EntryRef()) != B_OK) {
-		ShowCenteredAlert("There was a problem trying to save in the folder "
-			"you specified. Please try another one.", "Cancel");
+		ShowCenteredAlert(LOCALE("There was a problem trying to save in the "
+			"folder you specified. Please try another one."), LOCALE("Cancel"));
 		return;
 	}
 
 	if (dir.Contains(fTextControl->Text())) {
 		if (dir.Contains(fTextControl->Text(), B_DIRECTORY_NODE)) {
-			ShowCenteredAlert("The name you have specified is already the name "
-				"of a folder. Please type another name.", "Cancel");
+			ShowCenteredAlert(LOCALE("The name you have specified is already "
+				"the name of a folder. Please type another name."),
+				LOCALE("Cancel"));
 			fTextControl->TextView()->SelectAll();
 			return;
 		} else {
 			// if this was invoked by a dbl click, it is an explicit replacement
 			// of the file.
-			BString str;
-			str << "The file \"" << fTextControl->Text() << "\" already exists in the "
-				"specified folder. Do you want to replace it?";
+			char buffer[1024];
+			sprintf(buffer, LOCALE("The file \"%s\" already exists in the "
+				"specified folder. Do you want to replace it?"),
+				fTextControl->Text());
 
-			if (ShowCenteredAlert(str.String(), "Cancel", "Replace") == 0) {
+			if (ShowCenteredAlert(buffer, LOCALE("Cancel"), LOCALE("Replace")) == 0) {
 				// user canceled
 				fTextControl->TextView()->SelectAll();
 				return;
@@ -1427,7 +1399,7 @@ TFilePanel::HandleSaveButton()
 
 	// close window if we're dealing with standard message
 	if (fHideWhenDone)
-		PostMessage(B_CLOSE_REQUESTED);
+		PostMessage(B_QUIT_REQUESTED);
 }
 
 
@@ -1460,7 +1432,7 @@ TFilePanel::OpenSelectionCommon(BMessage *openMessage)
 
 	// close window if we're dealing with standard message
 	if (fHideWhenDone)
-		PostMessage(B_CLOSE_REQUESTED);
+		PostMessage(B_QUIT_REQUESTED);
 }
 
 
@@ -1548,6 +1520,8 @@ BFilePanelPoseView::StartWatching()
 	BMessenger tracker(kTrackerSignature);
 	BHandler::StartWatching(tracker, kVolumesOnDesktopChanged);
 	BHandler::StartWatching(tracker, kDesktopIntegrationChanged);
+	BHandler::StartWatching(tracker, kTransparentSelectionChanged);
+	BHandler::StartWatching(tracker, kTransparentSelectionColorChanged);
 }
 
 
@@ -1560,6 +1534,8 @@ BFilePanelPoseView::StopWatching()
 	BMessenger tracker(kTrackerSignature);
 	BHandler::StopWatching(tracker, kVolumesOnDesktopChanged);
 	BHandler::StopWatching(tracker, kDesktopIntegrationChanged);
+	BHandler::StopWatching(tracker, kTransparentSelectionChanged);
+	BHandler::StopWatching(tracker, kTransparentSelectionColorChanged);
 }
 
 
@@ -1578,17 +1554,17 @@ BFilePanelPoseView::FSNotification(const BMessage *message)
 						break;
 
 					ASSERT(TargetModel());
-					TrackerSettings settings;
 
-					if (settings.MountVolumesOntoDesktop()) {
+					if (gTrackerSettings.MountVolumesOntoDesktop()) {
 						// place an icon for the volume onto the desktop
 						BVolume volume(device);
 						if (volume.InitCheck() == B_OK
-							&& !volume.IsShared() || settings.MountSharedVolumesOntoDesktop())
+							&& !volume.IsShared() ||
+							gTrackerSettings.MountSharedVolumesOntoDesktop())
 							CreateVolumePose(&volume, true);
 					}
 
-					if (!settings.IntegrateNonBootBeOSDesktops())
+					if (!gTrackerSettings.IntegrateNonBootBeOSDesktops())
 						break;
 
 					BDirectory remoteDesktop;
@@ -1710,7 +1686,7 @@ BFilePanelPoseView::AdaptToVolumeChange(BMessage *message)
 		monitorMsg.AddInt64("node", model.NodeRef()->node);
 		monitorMsg.AddInt64("directory", model.EntryRef()->directory);
 		monitorMsg.AddString("name", model.EntryRef()->name);
-		TrackerSettings().SetShowDisksIcon(showDisksIcon);
+		gTrackerSettings.SetShowDisksIcon(showDisksIcon);
 		if (Window())
 			Window()->PostMessage(&monitorMsg, this);
 	}

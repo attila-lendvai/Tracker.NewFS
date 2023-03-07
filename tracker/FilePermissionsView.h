@@ -49,7 +49,7 @@ public:
 		:	BCheckBox(rect, name, label, message)
 		{}
 		
-	virtual void Draw(BRect rect )
+	virtual void Draw(BRect rect)
 		{
 			BCheckBox::Draw(rect);
 			
@@ -62,33 +62,41 @@ public:
 
 class FilePermissionsView : public BView {
 public:
-	FilePermissionsView(BRect, Model *);
-	
-	void ModelChanged(Model *);
-	
+								FilePermissionsView(BRect, Model *);
+								FilePermissionsView(BRect, BObjectList<entry_ref> *);
+
+		void					ModelChanged(Model *);
+		void					RefsChanged(BObjectList<entry_ref> *);
+
+virtual	void					ResizeToPreferred();
+
 protected:
-	virtual void MessageReceived(BMessage *);
-	virtual void AttachedToWindow();
+virtual	void					MessageReceived(BMessage *);
+virtual	void					AttachedToWindow();
 
 private:
-	Model *fModel;
-	
-	FocusCheckBox *fReadUserCheckBox;
-	FocusCheckBox *fReadGroupCheckBox;
-	FocusCheckBox *fReadOtherCheckBox;
+		void					InitCommon();
 
-	FocusCheckBox *fWriteUserCheckBox;
-	FocusCheckBox *fWriteGroupCheckBox;
-	FocusCheckBox *fWriteOtherCheckBox;
+		Model					*fModel;
+		BObjectList<entry_ref>	*fRefs;
+		bool					fMultiple;
 
-	FocusCheckBox *fExecuteUserCheckBox;
-	FocusCheckBox *fExecuteGroupCheckBox;
-	FocusCheckBox *fExecuteOtherCheckBox;
-	
-	BTextControl *fOwnerTextControl;
-	BTextControl *fGroupTextControl;
+		FocusCheckBox			*fReadUserCheckBox;
+		FocusCheckBox			*fReadGroupCheckBox;
+		FocusCheckBox			*fReadOtherCheckBox;
 
-	typedef BView _inherited;
+		FocusCheckBox			*fWriteUserCheckBox;
+		FocusCheckBox			*fWriteGroupCheckBox;
+		FocusCheckBox			*fWriteOtherCheckBox;
+
+		FocusCheckBox			*fExecuteUserCheckBox;
+		FocusCheckBox			*fExecuteGroupCheckBox;
+		FocusCheckBox			*fExecuteOtherCheckBox;
+
+		BTextControl			*fOwnerTextControl;
+		BTextControl			*fGroupTextControl;
+
+typedef	BView					_inherited;
 };
 
 } // namespace BPrivate

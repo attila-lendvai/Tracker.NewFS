@@ -1,0 +1,5 @@
+"Native string" = "Locale String";
+"The quoted strings are equivalent to C++ string literals" = "They may contain escaped characters (\n) or they may be format strings with format characters (%s, %d)"
+"If you want to enclose double quotes you need to escape them (\")" = " in the same way as you would have to in C++ source code."
+"The parser looks for <DoubleQuote><NativeString><DoubleQuote><=><DoubleQuote><LocaleString><DoubleQuote><;>" = "It doesn't care about anything inbetween. So you can place comments and or spaces as you want."
+"If you want to use B_UTF8_ELLIPSIS, add them directly after the String"B_UTF8_ELLIPSIS = "They will then be converted while parsing.";

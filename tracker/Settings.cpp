@@ -32,8 +32,8 @@ names are registered trademarks or trademarks of their respective holders.
 All rights reserved.
 */
 
+#include "Defines.h"
 #include <Debug.h>
-
 #include <string.h>
 #include <stdlib.h>
 #include <stdio.h>
@@ -273,4 +273,3 @@ BooleanValueSetting::SaveSettingValue(Settings *settings)
 {
 	settings->Write(fValue ? "on" : "off");
 }
-

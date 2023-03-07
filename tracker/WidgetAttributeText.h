@@ -103,6 +103,8 @@ public:
 	
 	void SetDirty(bool);
 	
+	const char *GetText() { return fText.String(); }
+	
 protected:
 	// generic fitting routines used by the different attributes
 	static float TruncString(BString *result, const char *src,

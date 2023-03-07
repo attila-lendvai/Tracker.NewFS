@@ -38,7 +38,7 @@ All rights reserved.
 #ifndef NAV_MENU_H
 #define NAV_MENU_H
 
-
+#include "Defines.h"
 #include <Messenger.h>
 #include <StorageDefs.h>
 #include <Entry.h>
@@ -149,9 +149,7 @@ class BNavMenu : public BSlowMenu {
 
 //	Spring Loaded Folder convenience routines
 //		used in both Tracker and Deskbar
-#if B_BEOS_VERSION_DANO
-#define _IMPEXP_TRACKER
-#endif
+
 _IMPEXP_TRACKER bool SpringLoadedFolderCompareMessages(const BMessage *incoming,
 	const BMessage *dragmessage);
 _IMPEXP_TRACKER void SpringLoadedFolderSetMenuStates(const BMenu *menu,
@@ -160,9 +158,6 @@ _IMPEXP_TRACKER void SpringLoadedFolderAddUniqueTypeToList(entry_ref *ref,
 	BObjectList<BString> *typeslist);
 _IMPEXP_TRACKER void SpringLoadedFolderCacheDragData(const BMessage *incoming,
 	BMessage **, BObjectList<BString> **typeslist);
-#if B_BEOS_VERSION_DANO
-#undef _IMPEXP_TRACKER
-#endif
 
 } // namespace BPrivate
 

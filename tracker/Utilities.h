@@ -38,6 +38,7 @@ All rights reserved.
 #include <ByteOrder.h>
 #include <Bitmap.h>
 #include <DataIO.h>
+#include <Debug.h>
 #include <Directory.h>
 #include <Entry.h>
 #include <Font.h>
@@ -46,6 +47,7 @@ All rights reserved.
 #include <MenuItem.h>
 #include <MessageFilter.h>
 #include <Mime.h>
+#include <ObjectList.h>
 #include <Point.h>
 #include <Path.h>
 #include <String.h>
@@ -63,6 +65,8 @@ class BView;
 namespace BPrivate {
 
 class Benaphore;
+class BPose;
+class BPoseView;
 
 // global variables
 extern const rgb_color kBlack;
@@ -79,6 +83,38 @@ const int32 kMiniIconSeparator = 3;
 const color_space kDefaultIconDepth = B_COLOR_8_BIT;
 
 // misc typedefs, constants and structs
+
+// Periodically updated poses (ones with a volume space bar) register
+// themselfs in this global list. This way they can be iterated over instead
+// of sending around update messages.
+
+class PeriodicUpdatePoses {
+	public:
+		PeriodicUpdatePoses();
+		~PeriodicUpdatePoses();
+
+		typedef bool (*PeriodicUpdateCallback)(BPose *pose, void *cookie);
+
+		void AddPose(BPose *pose, BPoseView *poseView,
+			PeriodicUpdateCallback callback, void *cookie);
+		bool RemovePose(BPose *pose, void **cookie);
+
+		void DoPeriodicUpdate(bool forceRedraw);
+
+	private:
+		struct periodic_pose {
+			BPose					*pose;
+			BPoseView				*pose_view;
+			PeriodicUpdateCallback	callback;
+			void					*cookie;
+		};
+
+		Benaphore *fLock;
+		BObjectList<periodic_pose> fPoseList;
+};
+
+extern PeriodicUpdatePoses gPeriodicUpdatePoses;
+
 
 // PoseInfo is the structure that gets saved as attributes for every node on
 // disk, defining the node's position and visibility
@@ -380,14 +416,6 @@ int32 CountRefs(const BMessage *);
 BMenuItem *EachMenuItem(BMenu *menu, bool recursive, BMenuItem *(*func)(BMenuItem *));
 const BMenuItem *EachMenuItem(const BMenu *menu, bool recursive,
 	BMenuItem *(*func)(const BMenuItem *));
-
-// string manipulation
-// note that there are now TruncateString APIs in both BView and BFont
-void TruncString(const BFont *font, const char *original, BString &result,
-	float width, uint32 truncMode = (uint32)B_TRUNCATE_END);
-void TruncString(BString *result, const char *str, const BView *view,
-	float width, uint32 truncMode, float *resultingWidth = 0);
-BString *TruncString(const BView *view, const char *str, float width);
 
 int64 StringToScalar(const char *text);
 	// string to num, understands kB, MB, etc.

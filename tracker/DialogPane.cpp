@@ -32,12 +32,13 @@ names are registered trademarks or trademarks of their respective holders.
 All rights reserved.
 */
 
-#include "Window.h"
+#include "Defines.h"
+#include <Window.h>
 #include "DialogPane.h"
 #include "ThreadMagic.h"
 #include "Utilities.h"
 
-void 
+void
 ViewList::RemoveAll(BView *)
 {
 	EachListItemIgnoreResult(this, &BView::RemoveSelf);

@@ -69,6 +69,7 @@ All rights reserved.
 #include "PoseView.h"
 #include "OpenWithWindow.h"
 #include "InfoWindow.h"
+#include "LanguageTheme.h"
 #include "FSStatusWindow.h"
 #include "MimeTypeList.h"
 #include "NodePreloader.h"
@@ -76,6 +77,7 @@ All rights reserved.
 #include "TFSContext.h"
 #include "FSClipboard.h"
 #include "FSUtils.h"
+#include "Undo.h"
 #include "Utilities.h"
 #include "Tracker.h"
 #include "Settings.h"
@@ -90,14 +92,8 @@ All rights reserved.
 #include "AboutBox.cpp"
 
 // prototypes for some private kernel calls that will some day be public
-#if B_BEOS_VERSION_DANO
-#define _IMPEXP_ROOT
-#endif
 extern "C" _IMPEXP_ROOT int _kset_fd_limit_(int num);
 extern "C" _IMPEXP_ROOT int _kset_mon_limit_(int num);
-#if B_BEOS_VERSION_DANO
-#undef _IMPEXP_ROOT
-#endif
 	// from priv_syscalls.h
 
 const int32 DEFAULT_MON_NUM = 4096;
@@ -114,25 +110,43 @@ namespace BPrivate {
 
 NodePreloader *gPreloader = NULL;
 
+#ifndef kDeskbarSignature // TODO: Why do we need this?
+#define kDeskbarSignature "application/x-vnd.Be-TSKB"
+#endif
+
 void 
 InitIconPreloader()
 {
 	static int32 lock = 0;
 
 	if (atomic_add(&lock,1) != 0) {
+		// Just wait for the icon cache to be instatiated
 		int32 tries = 20;	
-		while (gPreloader == NULL && tries-- > 0)
+		while (IconCache::sIconCache == NULL && tries-- > 0)
 			snooze(10000);
 		return;
 	}
 
-	if (gPreloader != NULL)
+	if (IconCache::sIconCache != NULL)
 		return;
+		
+	// only start the node preloader if its Tracker or the Deskbar itself - don't
+	// start it for file panels
+	
+	bool preload = dynamic_cast<TTracker*>(be_app) != NULL;
+	if (!preload) {
+		// check for Deskbar
+		app_info info;
+		if (be_app->GetAppInfo(&info) == B_OK
+			&& !strcmp(info.signature, kDeskbarSignature))
+			preload = true;
+	}
+	if (preload)
+		gPreloader = NodePreloader::InstallNodePreloader("NodePreloader", be_app);
 
-	IconCache::iconCache = new IconCache();
-	gPreloader = NodePreloader::InstallNodePreloader("NodePreloader", be_app);
-
-	atomic_add(&lock,-1);
+	IconCache::sIconCache = new IconCache();
+	
+	atomic_add(&lock, -1);
 }
 
 }	// namespace BPrivate
@@ -186,7 +200,7 @@ HideVarDir()
 
 TTracker::TTracker()
 	:	BApplication(kTrackerSignature),
-	fSettingsWindow(NULL)
+		fSettingsWindow(NULL)
 {
 	// set the cwd to /boot/home, anything that's launched 
 	// from Tracker will automatically inherit this 
@@ -204,7 +218,9 @@ TTracker::TTracker()
 #ifdef CHECK_OPEN_MODEL_LEAKS
 	InitOpenModelDumping();
 #endif
-
+	
+	// initialize globals
+	gLanguageTheme = new LanguageTheme();
 	InitIconPreloader();
 
 #ifdef LEAK_CHECKING
@@ -290,7 +306,7 @@ NodePreloader *gPreloader = NULL;
 void
 TTracker::Quit()
 {
-	TrackerSettings().SaveSettings(false);
+	gTrackerSettings.SaveSettings(false);
 	
 	fAutoMounter->Lock();
 	fAutoMounter->QuitRequested();	// automounter does some stuff in QuitRequested
@@ -306,7 +322,7 @@ TTracker::Quit()
 	
 	delete gPreloader;
 	delete fTaskLoop;
-	delete IconCache::iconCache;
+	delete IconCache::sIconCache;
 
 	_inherited::Quit();
 }
@@ -320,6 +336,10 @@ TTracker::MessageReceived(BMessage *message)
 	switch (message->what) {
 		case kGetInfo:
 			OpenInfoWindows(message);
+			break;
+		
+		case kCloseInfo:
+			CloseInfoWindows(message);
 			break;
 
 		case kMoveToTrash:
@@ -382,7 +402,6 @@ TTracker::MessageReceived(BMessage *message)
 			break;
 
 #ifdef MOUNT_MENU_IN_DESKBAR
-
 		case 'gmtv':
 			{
 				// Someone (probably the deskbar) has requested a list of
@@ -402,8 +421,7 @@ TTracker::MessageReceived(BMessage *message)
 			break;
 
 
-		case kRestoreBackgroundImage:
-			{
+		case kRestoreBackgroundImage: {
 				BDeskWindow *desktop = GetDeskWindow();
 				AutoLock<BWindow> lock(desktop);
 				desktop->UpdateDesktopBackgroundImages();
@@ -418,8 +436,7 @@ TTracker::MessageReceived(BMessage *message)
 			SendNotices(kFavoriteCountChangedExternally, message);
 			break;
 
-		case kStartWatchClipboardRefs:
-		{
+		case kStartWatchClipboardRefs: {
 			BMessenger messenger;
 			message->FindMessenger("target", &messenger);
 			if (messenger.IsValid())
@@ -427,12 +444,31 @@ TTracker::MessageReceived(BMessage *message)
 			break;
 		}
 
-		case kStopWatchClipboardRefs:
-		{
+		case kStopWatchClipboardRefs: {
 			BMessenger messenger;
 			message->FindMessenger("target", &messenger);
 			if (messenger.IsValid())
 				fClipboardRefsWatcher->RemoveFromNotifyList(messenger);
+			break;
+		}
+		
+		case kFSClipboardChanges:
+			fClipboardRefsWatcher->UpdatePoseViews(message);
+			break;
+		
+		case kUndoAction:
+			if (gTrackerSettings.UndoEnabled())
+				gUndoHistory.Undo(1);
+			break;
+		
+		case kRedoAction:
+			if (gTrackerSettings.UndoEnabled())
+				gUndoHistory.Redo(1);
+			break;
+
+		case kShowVolumeSpaceBar:
+		case kSpaceBarColorChanged: {
+			gPeriodicUpdatePoses.DoPeriodicUpdate(true);
 			break;
 		}
 
@@ -445,27 +481,11 @@ TTracker::MessageReceived(BMessage *message)
 void
 TTracker::Pulse()
 {
-	if (!TrackerSettings().ShowVolumeSpaceBar())
+	if (!gTrackerSettings.ShowVolumeSpaceBar())
 		return;
 
 	// update the volume icon's free space bars
-	BVolumeRoster roster;
-
- 	BVolume volume;
-	while (roster.GetNextVolume(&volume) == B_NO_ERROR)
-	{
-		BDirectory dir;
-		volume.GetRootDirectory(&dir);
-		node_ref nodeRef;
-		dir.GetNodeRef(&nodeRef);
-
-		BMessage notificationMessage;
-		notificationMessage.AddInt32("device", *(int32 *)&nodeRef.device);
-
-		LockLooper();
-		SendNotices(kUpdateVolumeSpaceBar, &notificationMessage);
-		UnlockLooper();
-	}
+	gPeriodicUpdatePoses.DoPeriodicUpdate(false);
 }
 
 void
@@ -610,8 +630,8 @@ TTracker::OpenRef(const entry_ref *ref, const node_ref *nodeToClose,
 		
 		if (!brokenLinkWithSpecificHandler) {
 			delete model;
-			(new BAlert("", "There was an error resolving the link.",
-				"Cancel", 0, 0,
+			(new BAlert("", LOCALE("There was an error resolving the link."),
+				LOCALE("Cancel"), 0, 0,
 				B_WIDTH_AS_USUAL, B_WARNING_ALERT))->Go();
 			return result;
 		}
@@ -791,6 +811,9 @@ TTracker::OpenContainerWindow(Model *model, BMessage *originalRefsList,
 		// find out if window already open
 		window = FindContainerWindow(model->NodeRef());
 
+	if (dynamic_cast<BDeskWindow*>(window) != NULL || modifiers() & B_SHIFT_KEY)
+		window = NULL;
+		
 	bool someWindowActivated = false;
 	
 	uint32 workspace = (uint32)(1 << current_workspace());		
@@ -827,9 +850,9 @@ TTracker::OpenContainerWindow(Model *model, BMessage *originalRefsList,
 			// clone the message, window adopts it for it's own use
 			refList = new BMessage(*originalRefsList);
 		window = new OpenWithContainerWindow(refList, &fWindowList);
-	} else if (model->IsRoot()) {
+	/*} else if (model->IsRoot()) { // BVolumeWindow should not be used!
 		// window will adopt the model
-		window = new BVolumeWindow(&fWindowList, openFlags);
+		window = new BVolumeWindow(&fWindowList, openFlags);*/
 	} else if (model->IsQuery()) {
 		// window will adopt the model
 		window = new BQueryContainerWindow(&fWindowList, openFlags);
@@ -874,29 +897,66 @@ TTracker::OpenInfoWindows(BMessage *message)
 	type_code type;
 	int32 count;
 	message->GetInfo("refs", &type, &count);
+	if (count < 1)
+		return;
+	
+	bool multiple = true;
+	
+	// show info-windows for every single file if it's about only one file
+	// or if we explicitly disable the multiple-file-info
+	if (count == 1 || (message->FindBool("multiple", &multiple) == B_OK
+		&& multiple == false)) {
+		for (int32 index = 0; index < count; index++) {
+			entry_ref ref;
+			message->FindRef("refs", index, &ref);
+			
+			BEntry entry;
+			if (entry.SetTo(&ref) == B_OK) {
+				Model *model = new Model(&entry);
+				if (model->InitCheck() != B_OK) {
+					delete model;
+					continue;
+				}
+				
+				AutoLock<WindowList> lock(&fWindowList);
+				BInfoWindow *wind = FindInfoWindow(model->NodeRef());
+				
+				if (wind) {
+					wind->Activate();
+					delete model;
+				} else {
+					wind = new BInfoWindow(model, index, &fWindowList);
+					wind->PostMessage(kRestoreState);
+				}
+			}
+		}
+	} else {
+		BInfoWindow *wind = new BInfoWindow(message, 0);
+		wind->PostMessage(kRestoreState);
+	}
+}
+
+void
+TTracker::CloseInfoWindows(BMessage *message)
+{
+	type_code type;
+	int32 count;
+	message->GetInfo("refs", &type, &count);
+
 
 	for (int32 index = 0; index < count; index++) {
 		entry_ref ref;
 		message->FindRef("refs", index, &ref);
 		BEntry entry;
 		if (entry.SetTo(&ref) == B_OK) {
-			Model *model = new Model(&entry);
-			if (model->InitCheck() != B_OK) {
-				delete model;
-				continue;
-			}
-
-			AutoLock<WindowList> lock(&fWindowList);
-			BInfoWindow *wind = FindInfoWindow(model->NodeRef());
-
+			node_ref nref;
+			entry.GetNodeRef(&nref);
+			
+			BInfoWindow *wind = FindInfoWindow(&nref);
 			if (wind) {
-				wind->Activate();
-				delete model;
-			} else {
-				wind = new BInfoWindow(model, index, &fWindowList);
-				wind->PostMessage(kRestoreState);
+				wind->Lock();
+				wind->Close();
 			}
-
 		}
 	}
 }
@@ -914,6 +974,18 @@ TTracker::GetDeskWindow() const
 	}
 	TRESPASS();
 	return NULL;
+}
+
+bool
+TTracker::LockWindowList()
+{
+	return fWindowList.Lock();
+}
+
+void
+TTracker::UnlockWindowList()
+{
+	fWindowList.Unlock();
 }
 
 BContainerWindow *
@@ -1031,7 +1103,7 @@ TTracker::CloseActiveQueryWindows(dev_t device)
 		if (window) {
 			AutoLock<BWindow> lock(window);
 			if (window->ActiveOnDevice(device)) {
-				window->PostMessage(B_CLOSE_REQUESTED);
+				window->PostMessage(B_QUIT_REQUESTED);
 				closed = true;
 			}
 		}
@@ -1101,7 +1173,7 @@ TTracker::CloseWindowAndChildren(const node_ref *node)
 	int32 numItems = closeList.CountItems();
 	for (int32 index = 0; index < numItems; index++) {
 		BContainerWindow *window = closeList.ItemAt(index);
-		window->PostMessage(B_CLOSE_REQUESTED);
+		window->PostMessage(B_QUIT_REQUESTED);
 	}
 }
 
@@ -1120,7 +1192,7 @@ TTracker::CloseAllWindows()
 		// avoid the desktop
 		if (!dynamic_cast<BDeskWindow *>(window)
 			&& !dynamic_cast<FSStatusWindow *>(window))
-			window->PostMessage(B_CLOSE_REQUESTED);
+			window->PostMessage(B_QUIT_REQUESTED);
 	}
 	// count from end to beginning so we can remove items safely
 	for (int32 index = fWindowList.CountItems() - 1; index >= 0; index--) {
@@ -1136,6 +1208,12 @@ TTracker::CloseAllWindows()
 void
 TTracker::ReadyToRun()
 {
+	// create fakewindow for OpenTracker compatibility
+	// needs to be created at index 0
+	BWindow *fakewindow = new BWindow(BRect(200, 200, 550, 233), "StatusWindow",
+										B_UNTYPED_WINDOW, 0);
+	fakewindow->Hide();
+	
 	InitMimeTypes();
 	InstallDefaultTemplates();
 	InstallIndices();
@@ -1161,6 +1239,8 @@ TTracker::ReadyToRun()
 	if (TFSContext::GetBootDesktopDir(deskDir) == B_OK) {
 		BEntry entry;
 		deskDir.GetEntry(&entry);
+		BPath deskPath;
+		entry.GetPath(&deskPath);
 		Model *model = new Model(&entry);
 		if (model->InitCheck() == B_OK) {
 			AutoLock<WindowList> lock(&fWindowList);
@@ -1186,15 +1266,20 @@ TTracker::ReadyToRun()
 	
 				const char *path;
 				bool hideWindow = false;
-				int32 messageCounter=0;
+				int32 messageCounter = 0;
 				for (int32 index = 0; message.FindString("paths", index, &path) == B_OK;
 					index++) {
+					// Don't doubleopen the Desktop
+					if (BString(path).Compare(deskPath.Path()) == 0)
+						continue;
+
 					message.FindBool(path, &hideWindow);
 					BEntry entry(path, true);
 					if (entry.InitCheck() == B_OK) {
 						entry_ref ref;
 						entry.GetRef(&ref);
 						
+						AutoLock<WindowList> lock(&fWindowList);
 						BContainerWindow *window = FindContainerWindow(&ref);
 						
 						bool retrieveStateMessage = window != NULL
@@ -1247,7 +1332,7 @@ TTracker::ReadyToRun()
 		Model model(&entry);
 		if (model.InitCheck() == B_OK) {
 
-			if (TrackerSettings().ShowDisksIcon()) {
+			if (gTrackerSettings.ShowDisksIcon()) {
 				// add the root icon to desktop window
 				BMessage message;
 				message.what = B_NODE_MONITOR;
@@ -1378,7 +1463,7 @@ TTracker::CloseParentWindowCommon(BContainerWindow *window)
 		// don't close the destop
 		return false;
 
-	window->PostMessage(B_CLOSE_REQUESTED);
+	window->PostMessage(B_QUIT_REQUESTED);
 	return true;
 }
 

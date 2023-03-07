@@ -1,34 +1,36 @@
-// Open Tracker License
-//
-// Terms and Conditions
-//
-// Copyright (c) 1991-2000, Be Incorporated. All rights reserved.
-//
-// Permission is hereby granted, free of charge, to any person obtaining a copy of
-// this software and associated documentation files (the "Software"), to deal in
-// the Software without restriction, including without limitation the rights to
-// use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
-// of the Software, and to permit persons to whom the Software is furnished to do
-// so, subject to the following conditions:
-// 
-// The above copyright notice and this permission notice applies to all licensees
-// and shall be included in all copies or substantial portions of the Software.
-// 
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF TITLE, MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
-// BE INCORPORATED BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
-// AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION
-// WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-//
-// Except as contained in this notice, the name of Be Incorporated shall not be
-// used in advertising or otherwise to promote the sale, use or other dealings in
-// this Software without prior written authorization from Be Incorporated.
-// 
-// Tracker(TM), Be(R), BeOS(R), and BeIA(TM) are trademarks or registered trademarks
-// of Be Incorporated in the United States and other countries. Other brand product
-// names are registered trademarks or trademarks of their respective holders.
-// All rights reserved.
+/*
+Open Tracker License
+
+Terms and Conditions
+
+Copyright (c) 1991-2000, Be Incorporated. All rights reserved.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+of the Software, and to permit persons to whom the Software is furnished to do
+so, subject to the following conditions:
+
+The above copyright notice and this permission notice applies to all licensees
+and shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF TITLE, MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+BE INCORPORATED BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
+AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION
+WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+Except as contained in this notice, the name of Be Incorporated shall not be
+used in advertising or otherwise to promote the sale, use or other dealings in
+this Software without prior written authorization from Be Incorporated.
+
+Tracker(TM), Be(R), BeOS(R), and BeIA(TM) are trademarks or registered trademarks
+of Be Incorporated in the United States and other countries. Other brand product
+names are registered trademarks or trademarks of their respective holders.
+All rights reserved.
+*/
 
 
 #include <memory>
@@ -43,6 +45,7 @@
 #include <fs_attr.h>
 #include <sys/stat.h>
 #include <ctype.h>
+#include <Drivers.h>
 
 #if _BUILDING_tracker
   #include "Attributes.h"
@@ -59,6 +62,16 @@
 // 	See header file for more config stuff!!!
 
 #include "FSContext.h"
+#include "FSUtils.h"
+#include "LanguageTheme.h"
+#include "Undo.h"
+
+// from FSUtils.cpp
+enum {
+	kNotConfirmed,
+	kConfirmedHomeMove,
+	kConfirmedAll
+};
 
 #if FS_CONFIG_MULTITHREADED
 	#include "ThreadMagic.h"
@@ -117,7 +130,7 @@
 // - Build a tree of the source filesystem tree in memory, and while doing the preflight check and store file counts and sizes 
 //   for each dir (required to remain in sync when skipping a dir) and check for conflicts, prompt for answer and store
 //   the answers. There should be a dry-run flag and when it's set each operation should only count the entries and check for
-//   the need of user interaction. After that the operation should be run on normally, executing the previouly given answers.
+//   the need of user interaction. After that the operation should be run on normally, executing the previously given answers.
 //   The rest of the system should not change (noone guarantees that there'll be no more conflict) but it should
 //   first check for the stored answers at the current item in the tree and ask the user only if there's no already stored answer.
 //   Store entry modification time and ignore answers given in the dry-run if entry was modified
@@ -157,50 +170,52 @@
 
 namespace fs {
 
-static const bigtime_t	kProgressUpdateRate				= 250000;		// should be in sync with FSStatusWindow
-static const size_t	kCopyBufferInitialSize				= 64 * 1024;
+static const bigtime_t	kProgressUpdateRate				= 250000;			// should be in sync with FSStatusWindow
+static const size_t		kCopyBufferInitialSize			= 64 * 1024;
 static const int32		kMemsizeDividerForCopyBuffer	= 8;				// mMaxBufferSize = memory size / kMemsizeDividerForCopyBuffer
-static const off_t		kMultiThreadedFileSizeLimit		= 1 * 1024 * 1024;// files bigger than this will be copied with two threads
-static const size_t	kMinBufferSize					= 32 * 1024;
+static const off_t		kMultiThreadedFileSizeLimit		= 1 * 1024 * 1024;	// files bigger than this will be copied with two threads
+static const size_t		kMinBufferSize					= 32 * 1024;
 static const off_t		kMinChunkSize					= 16 * 1024;		// read/write chunks while copying, must be >=16k
-static const int32		kMaxChunkSizeDivider			= 32;			// max_mem / kMaxChunkSizeDivider is the max size of the chunk in multithreaded copy
-static const bigtime_t	kShrinkBufferAfterThisDelay		= 2000000;		// delay after buffer may shrink
-static const int32		kBuffersInTwoDeviceCopyMode	= 4;				// must be bigger or equal to 2
-static const int32		kReaderSemCount				= kBuffersInTwoDeviceCopyMode - 1;
+static const int32		kMaxChunkSizeDivider			= 32;				// max_mem / kMaxChunkSizeDivider is the max size of the chunk in multithreaded copy
+static const bigtime_t	kShrinkBufferAfterThisDelay		= 2000000;			// delay after buffer may shrink
+static const int32		kBuffersInTwoDeviceCopyMode		= 4;				// must be bigger or equal to 2
+static const int32		kReaderSemCount					= kBuffersInTwoDeviceCopyMode - 1;
 
 #if FS_SAME_DEVICE_OPT
-static const int32	kSyncLowerLimit					= 128 * 1024;	// files smaller then this won't be flushed when they are written
+static const int32		kSyncLowerLimit					= 128 * 1024;		// files smaller then this won't be flushed when they are written
 #endif
 
-uint64						FSContext :: sMaxMemorySize;
-int32						FSContext :: sEmptyTrashRunning = 0;
-int32						FSContext :: sInitialized = 0;
-BLocker						FSContext :: sLocker;
-FSContext::node_ref_list_t	FSContext :: sTrashDirList;
-FSContext::node_ref_list_t	FSContext :: sDesktopDirList;
-FSContext::node_ref_list_t	FSContext :: sPrintersDirList;
-FSContext::node_ref_list_t	FSContext :: sHomeDirList;
-FSContext::command			FSContext :: sLastSelectedInteractionAnswers[kTotalInteractions];
+uint64						FSContext::sMaxMemorySize;
+int32						FSContext::sEmptyTrashRunning = 0;
+int32						FSContext::sInitialized = 0;
+BLocker						FSContext::sLocker;
+FSContext::node_ref_list_t	FSContext::sTrashDirList;
+FSContext::node_ref_list_t	FSContext::sDesktopDirList;
+FSContext::node_ref_list_t	FSContext::sPrintersDirList;
+FSContext::node_ref_list_t	FSContext::sHomeDirList;
+FSContext::node_ref_list_t	FSContext::sSystemDirList;
+FSContext::node_ref_list_t	FSContext::sBeOSDirList;
+FSContext::command			FSContext::sLastSelectedInteractionAnswers[kTotalInteractions];
 
 
-const char *FSContext :: sCommandStringTable[kTotalCommands] = {
+const char *FSContext::sCommandStringTable[kTotalCommands] = {
 	#define FSCMD(a, b, c)			b,
 	#define FSCMD_INITED(a, b, c, d)	b,
 	#define FSCMD_HIDDEN(a, b)
 	#include "FSCommands.tbl"
 };
 
-const char *FSContext :: sOperationStringTable[kTotalOperations] = {
+const char *FSContext::sOperationStringTable[kTotalOperations] = {
 	#define FSOP(name, string, suffix)	string,
 	#include "FSOperations.tbl"
 };
 
-const char *FSContext :: sTargetDirPrefixTable[kTotalOperations] = {
+const char *FSContext::sTargetDirPrefixTable[kTotalOperations] = {
 	#define FSOP(name, string, suffix)	suffix,
 	#include "FSOperations.tbl"
 };
 
-const FSContext::InteractionDescription		FSContext :: sInteractionsTable[kTotalInteractions] = {
+const FSContext::InteractionDescription		FSContext::sInteractionsTable[kTotalInteractions] = {
 	#define		INT_0(name, string, showfile) \
 				 	{string, showfile, \
 				 		{kInvalidCommand}, \
@@ -282,38 +297,38 @@ struct deleter : public unary_function<T, void> {
 
 #if FULL_ERROR_EXCEPTION
 
-FSException :: FSException(const FSException &other) {
+FSException::FSException(const FSException &other) {
 	mStatus = other.mStatus;
 	mWhat = other.mWhat;
 	mDeleteWhat = other.mDeleteWhat;
 	const_cast<FSException &>(other).mDeleteWhat = false;	// take ownership of error string
 }
 
-FSException :: FSException() : mDeleteWhat(false) {
+FSException::FSException() : mDeleteWhat(false) {
 	mStatus = B_ERROR;
 	mWhat = "General FSContext error";
 }
 
-FSException :: FSException(const FSContext::command iCommand) : mStatus(iCommand), mDeleteWhat(false) {
+FSException::FSException(const FSContext::command iCommand) : mStatus(iCommand), mDeleteWhat(false) {
 }
 
-FSException :: FSException(const status_t iStatus) : mStatus(iStatus), mDeleteWhat(false) {
+FSException::FSException(const status_t iStatus) : mStatus(iStatus), mDeleteWhat(false) {
 	mWhat = strerror(iStatus);
 }
 
-FSException :: FSException(const char *iStr) : mDeleteWhat(false) {
+FSException::FSException(const char *iStr) : mDeleteWhat(false) {
 	mStatus = B_ERROR;
 	mWhat = iStr;
 }
 
-FSException :: FSException(const char *iStr, const status_t iStatus) : mStatus(iStatus), mDeleteWhat(true) {
+FSException::FSException(const char *iStr, const status_t iStatus) : mStatus(iStatus), mDeleteWhat(true) {
 	BString str(iStr);
 	str += strerror(iStatus);
 	mWhat = new char[str.Length() + 1];
 	strcpy(const_cast<char *>(mWhat), str.String());
 }
 
-FSException :: FSException(const char *iStr1, const char *iStr2, const char *iStr3,
+FSException::FSException(const char *iStr1, const char *iStr2, const char *iStr3,
 		const status_t iStatus)  : mStatus(iStatus), mDeleteWhat(true) {
 	BString str(iStr1);
 	str += iStr2;
@@ -323,13 +338,13 @@ FSException :: FSException(const char *iStr1, const char *iStr2, const char *iSt
 	strcpy(const_cast<char *>(mWhat), str.String());
 }
 
-FSException :: ~FSException() {
+FSException::~FSException() {
 	if (mDeleteWhat)
 		delete [] mWhat;
 }
 		
 const char *
-FSException :: what() const {
+FSException::what() const {
 	return mWhat;
 }
 
@@ -350,7 +365,7 @@ bool FSContext::IsExtendedCommand(interaction iact, command icmd) FS_NOTHROW {
 
 
 const char *
-FSContext::OperationStack :: AsString() FS_NOTHROW {
+FSContext::OperationStack::AsString() FS_NOTHROW {
 	mStackString = "";
 	
 	for (int32 i = 0;  i < CountItems();  i++) {
@@ -364,7 +379,7 @@ FSContext::OperationStack :: AsString() FS_NOTHROW {
 
 
 const char *
-FSContext :: AsString(command incmd) FS_NOTHROW {
+FSContext::AsString(command incmd) FS_NOTHROW {
 
 	ASSERT(incmd < kTotalCommands  &&  sCommandStringTable[incmd] != 0);
 	
@@ -372,22 +387,22 @@ FSContext :: AsString(command incmd) FS_NOTHROW {
 	if (incmd >= kTotalCommands)
 		return "";
 
-	return sCommandStringTable[incmd];
+	return LOCALE(sCommandStringTable[incmd]);
 }
 
 const char *
-FSContext::OperationStack :: AsString(operation inop) FS_NOTHROW {
+FSContext::OperationStack::AsString(operation inop) FS_NOTHROW {
 
 	ASSERT(inop < kTotalOperations);	// safe to fail
 	
 	if (inop >= kTotalOperations)
 		return "";
 
-	return FSContext::sOperationStringTable[inop];
+	return LOCALE(FSContext::sOperationStringTable[inop]);
 }
 
 bool
-FSContext :: PushOperation(operation iop) FS_NOTHROW {
+FSContext::PushOperation(operation iop) FS_NOTHROW {
 	DEBUG_ONLY(if (iop == kInitializing) ASSERT(mOperationStack.CountItems() > 0));
 	if (mOperationStack.CountItems() == 0) {
 		mCurrentEntry = 0;			// in case of an early error in some init phase
@@ -404,7 +419,7 @@ FSContext :: PushOperation(operation iop) FS_NOTHROW {
 }
 
 void
-FSContext :: PopOperation() FS_NOTHROW {
+FSContext::PopOperation() FS_NOTHROW {
 	ASSERT(mOperationStack.CountItems() > 0);
 	mOperationStack.Pop();
 	if (mOperationStack.CountItems() == 0)
@@ -412,27 +427,25 @@ FSContext :: PopOperation() FS_NOTHROW {
 }
 
 const char *
-FSContext :: AsString(mode_t type) FS_NOTHROW {
+FSContext::AsString(mode_t type) FS_NOTHROW {
 	if (type == 0)
-		return "entry";
+		return LOCALE("entry");
 	else if (S_ISDIR(type))
-		return "directory";
+		return LOCALE("directory");
 	else if (S_ISREG(type))
-		return "file";
+		return LOCALE("file");
 	else if (S_ISLNK(type))
-		return "link";
+		return LOCALE("link");
 	else
-		return "nonregular entry";
+		return LOCALE("nonregular entry");
 }
 
 bool
-FSContext :: ShouldCopy(copy_flags iflag) FS_NOTHROW	{
+FSContext::ShouldCopy(copy_flags iflag) FS_NOTHROW	{
 	return ((iflag & mCopyFlags) != 0);
 }
 
-
-
-FSContext :: FSContext() FS_NOTHROW :
+FSContext::FSContext() FS_NOTHROW :
 							mShrinkBufferSuggestionTime(0),
 							mBuffer(0),
 							mBufferSize(0),
@@ -490,10 +503,16 @@ FSContext :: FSContext() FS_NOTHROW :
 		mDefaultInteractionAnswers[i] = kInvalidCommand;
 	
 	mMaxBufferSize = sMaxMemorySize / kMemsizeDividerForCopyBuffer;
+	
+	if (gTrackerSettings.UndoEnabled())
+		gUndoHistory.PrepareUndoContext(this);
 }
 
-FSContext :: ~FSContext() FS_NOTHROW {
-
+FSContext::~FSContext() FS_NOTHROW
+{
+	if (gTrackerSettings.UndoEnabled())
+		gUndoHistory.CommitUndoContext(this);
+	
 	delete [] mBuffer;
 	delete mChunkList;
 
@@ -514,7 +533,7 @@ FSContext :: ~FSContext() FS_NOTHROW {
 }
 
 void
-FSContext :: SuggestBufferSize(size_t requested_size) FS_NOTHROW {
+FSContext::SuggestBufferSize(size_t requested_size) FS_NOTHROW {
 //	if (mBufferSize >= requested_size)									// if buffer is already big enough
 //		return;
 
@@ -522,7 +541,7 @@ FSContext :: SuggestBufferSize(size_t requested_size) FS_NOTHROW {
 
 	requested_size += (16 * 1024 - 1);
 	requested_size -= requested_size % (16 * 1024);						// round it to 16k boundary
-		
+	
 	if (requested_size > mBufferSize) {
 	
 		mShrinkBufferSuggestionTime = 0;								// reset timer
@@ -554,7 +573,7 @@ FSContext :: SuggestBufferSize(size_t requested_size) FS_NOTHROW {
 }
 
 void
-FSContext :: SetBufferSize(size_t newsize) FS_THROW_FSEXCEPTION {
+FSContext::SetBufferSize(size_t newsize) FS_THROW_FSEXCEPTION {
 
 	if ((newsize != 0  &&  newsize < mBufferSize  &&  newsize < kMinBufferSize)  ||  newsize == mBufferSize)
 		return;
@@ -580,7 +599,7 @@ FSContext :: SetBufferSize(size_t newsize) FS_THROW_FSEXCEPTION {
 }
 
 uint8 *
-FSContext :: Buffer() FS_NOTHROW {
+FSContext::Buffer() FS_NOTHROW {
 	if (mBuffer == 0) {
 		mBuffer = new uint8[kCopyBufferInitialSize];
 		mBufferSize = kCopyBufferInitialSize;
@@ -599,7 +618,7 @@ date_sorter_comp(const void *_first, const void *_second) {
 
 
 void
-FSContext :: MakeSpaceFromTrash(off_t size) FS_NOTHROW {
+FSContext::MakeSpaceFromTrash(off_t size) FS_NOTHROW {
 
 	status_t rc;
 	BDirectory trash;
@@ -648,7 +667,7 @@ FSContext :: MakeSpaceFromTrash(off_t size) FS_NOTHROW {
 }
 
 void
-FSContext :: CheckFreeSpaceOnTarget(off_t size, interaction icode) FS_THROW_FSEXCEPTION {
+FSContext::CheckFreeSpaceOnTarget(off_t size, interaction icode) FS_THROW_FSEXCEPTION {
 
 	ASSERT(mTargetVolume.InitCheck() == B_OK);
 	
@@ -677,7 +696,7 @@ FSContext :: CheckFreeSpaceOnTarget(off_t size, interaction icode) FS_THROW_FSEX
 }
 
 void
-FSContext :: SetDefaultErrorAnswer(command ianswer, status_t ierror) FS_NOTHROW {
+FSContext::SetDefaultErrorAnswer(command ianswer, status_t ierror) FS_NOTHROW {
 	if (mOperationStack.CountItems() <= 0  ||  ianswer == kRetryOperation  ||  ianswer ==  kRetryEntry)
 		return;
 		
@@ -686,7 +705,7 @@ FSContext :: SetDefaultErrorAnswer(command ianswer, status_t ierror) FS_NOTHROW 
 }
 
 FSContext::command
-FSContext :: DefaultErrorAnswer(status_t ierr) FS_THROW_FSEXCEPTION {
+FSContext::DefaultErrorAnswer(status_t ierr) FS_THROW_FSEXCEPTION {
 
 	for (int32 i = 0;  i < mDefaultErrorAnswers.CountItems();  i++) {
 		if (mDefaultErrorAnswers[i].Equals(mOperationStack.Current(), ierr)) {
@@ -712,7 +731,7 @@ FSContext :: DefaultErrorAnswer(status_t ierr) FS_THROW_FSEXCEPTION {
 
 
 FSContext::command
-FSContext :: DefaultInteractionAnswer(interaction iact) FS_THROW_FSEXCEPTION {
+FSContext::DefaultInteractionAnswer(interaction iact) FS_THROW_FSEXCEPTION {
 	command cmd = mDefaultInteractionAnswers[iact];
 	
 	if (cmd == kSkipEntry) {
@@ -726,19 +745,17 @@ FSContext :: DefaultInteractionAnswer(interaction iact) FS_THROW_FSEXCEPTION {
 }
 
 void
-FSContext :: ResetProgressIndicator() FS_NOTHROW {
-
+FSContext::ResetProgressIndicator() FS_NOTHROW {
 	mProgressInfo.Clear();
 }
 
-
 void
-FSContext::ProgressInfo :: PrintToStream() {
+FSContext::ProgressInfo::PrintToStream() {
 	printf("mTotalSize:\t%Ld\nmCurrentSize:\t%Ld\nTotalSizeProgress:\t%.2f\n", mTotalSize, mCurrentSize, TotalSizeProgress());
 }
 
 void
-EntryRef :: SetTo(dev_t idev, ino_t idir, const char *iname) FS_NOTHROW {
+EntryRef::SetTo(dev_t idev, ino_t idir, const char *iname) FS_NOTHROW {
 	mRef.device = idev;
 	mRef.directory = idir;
 
@@ -754,26 +771,27 @@ EntryRef :: SetTo(dev_t idev, ino_t idir, const char *iname) FS_NOTHROW {
 			mRef.name = new char[len];
 			mSize = len;
 		} catch (...) {
-			FS_ERROR_THROW("In EntryRef :: SetTo()", B_NO_MEMORY);
+			FS_ERROR_THROW("In EntryRef::SetTo()", B_NO_MEMORY);
 		}
 	}
 	
 	strcpy(mRef.name, iname);
 }
 
-EntryRef :: EntryRef(dev_t dev, ino_t dir, const char *name) FS_NOTHROW {
-
+EntryRef::EntryRef(dev_t dev, ino_t dir, const char *name) FS_NOTHROW
+{
 	initialize();
 	SetTo(dev, dir, name);
 }
 
-EntryRef :: EntryRef(const entry_ref &ref) FS_NOTHROW {
-
+EntryRef::EntryRef(const entry_ref &ref) FS_NOTHROW
+{
 	initialize();
 	SetTo(ref.device, ref.directory, ref.name);
 }
 
-EntryRef :: ~EntryRef() {
+EntryRef::~EntryRef()
+{
 	if (mDeleteName)
 		delete [] Name();
 	
@@ -781,10 +799,9 @@ EntryRef :: ~EntryRef() {
 }
 
 
-
 void	// Postcond:	entry is unset
-FSContext :: AccumulateItemsAndSize(BEntry &entry, bool recursive) FS_THROW_FSEXCEPTION {
-
+FSContext::AccumulateItemsAndSize(BEntry &entry, bool recursive) FS_THROW_FSEXCEPTION
+{
 	status_t rc;
 	
 	if (mProgressInfo.IsTotalEnabled() == false)
@@ -798,8 +815,8 @@ FSContext :: AccumulateItemsAndSize(BEntry &entry, bool recursive) FS_THROW_FSEX
 
 
 void
-FSContext :: AccumulateItemsAndSize(EntryIterator &i, bool recursive) FS_THROW_FSEXCEPTION {
-	
+FSContext::AccumulateItemsAndSize(EntryIterator &i, bool recursive) FS_THROW_FSEXCEPTION
+{
 	if (mProgressInfo.IsTotalEnabled() == false)
 		return;												// then we should not waste time here...
 
@@ -822,8 +839,8 @@ FSContext :: AccumulateItemsAndSize(EntryIterator &i, bool recursive) FS_THROW_F
 }
 
 void
-FSContext :: CalculateItemsAndSizeRecursive(EntryIterator &i, ProgressInfo &progress_info, bool recursive) FS_THROW_FSEXCEPTION {
-	
+FSContext::CalculateItemsAndSizeRecursive(EntryIterator &i, ProgressInfo &progress_info, bool recursive) FS_THROW_FSEXCEPTION
+{
 	status_t rc = B_OK;
 
 	EntryRef ref;
@@ -866,8 +883,9 @@ FSContext :: CalculateItemsAndSizeRecursive(EntryIterator &i, ProgressInfo &prog
 }
 
 int32
-FSContext :: GetSizeString(char *in_ptr, float size1, float size2) {
-	static const char *strings[] = { "TB", "GB", "MB", "kB", ""};
+FSContext::GetSizeString(char *in_ptr, float size1, float size2)
+{
+	static const char *strings[] = { "TB", "GB", "MB", "kB", "B"};
 
 	float num1 = 0, num2 = 0;
 	uint32 i;
@@ -891,7 +909,6 @@ FSContext :: GetSizeString(char *in_ptr, float size1, float size2) {
 	
 	const char *format;
 	if (print_first) {
-	
 		if (num1 == 0)
 			format = "%.0f / ";
 		else if (num1 < 1)
@@ -911,7 +928,7 @@ FSContext :: GetSizeString(char *in_ptr, float size1, float size2) {
 	else
 		format = "%.0f %s";
 
-	// XXX check it... that string[i] may behave stramge
+	// XXX check it... that string[i] may behave strange
 
 	ptr += sprintf(ptr, format,	num2, (i < sizeof(strings) / sizeof(strings[0])) ? strings[i] : "BuG!");
 	
@@ -920,8 +937,8 @@ FSContext :: GetSizeString(char *in_ptr, float size1, float size2) {
 
 
 status_t
-FSContext :: CalculateItemsAndSize(EntryIterator &i, ProgressInfo &progress_info) FS_NOTHROW {
-	
+FSContext::CalculateItemsAndSize(EntryIterator &i, ProgressInfo &progress_info) FS_NOTHROW
+{
 	PreparingOperation();
 	
 	FS_SET_OPERATION(kCalculatingItemsAndSize);
@@ -945,8 +962,8 @@ FSContext :: CalculateItemsAndSize(EntryIterator &i, ProgressInfo &progress_info
 }
 
 void		// blindly copy the link content
-FSContext :: RawCopyLink(const BEntry &source_entry, BDirectory &target_dir, char *target_name) FS_THROW_FSEXCEPTION {
-	
+FSContext::RawCopyLink(const BEntry &source_entry, BDirectory &target_dir, char *target_name) FS_THROW_FSEXCEPTION
+{
 	status_t rc;
 	
 	BSymLink source_link(&source_entry);
@@ -959,13 +976,25 @@ FSContext :: RawCopyLink(const BEntry &source_entry, BDirectory &target_dir, cha
 	source_link.ReadLink(contents, B_PATH_NAME_LENGTH);
 	
 	FS_OPERATION(target_dir.CreateSymLink(target_name, contents, 0));
-
 	{
 		// we actually created a link, copy additionals
 		BNode source_node, new_node;
 		FS_OPERATION(source_node.SetTo(&source_entry));
 		FS_OPERATION(new_node.SetTo(&target_dir, target_name));
 		CopyAdditionals(source_node, new_node);
+		
+		if (gTrackerSettings.UndoEnabled()) {
+			BEntry entry(&target_dir, target_name);
+			entry_ref new_ref;
+			entry.GetRef(&new_ref);
+			entry_ref orig_ref;
+			source_entry.GetRef(&orig_ref);
+			
+			BMessage *undo = new BMessage(kCopySelectionTo);
+			undo->AddRef("new_ref", &new_ref);
+			undo->AddRef("orig_ref", &orig_ref);
+			gUndoHistory.AddItemToContext(undo, this);
+		}
 	}
 
 	NextEntryCreated(target_dir, target_name);
@@ -973,8 +1002,8 @@ FSContext :: RawCopyLink(const BEntry &source_entry, BDirectory &target_dir, cha
 
 		// Precond:		mRootSourceDirRef is set, target_name is B_FILE_NAME_LENGTH long
 bool	// Postcond:	source_entry will be unset, if the return code is false then the link target was copied and the caller should not count the link in the progress info
-FSContext :: CopyLink(EntryIterator &i, BEntry &source_entry, BDirectory &target_dir, char *target_name) FS_THROW_FSEXCEPTION {
-
+FSContext::CopyLink(EntryIterator &i, BEntry &source_entry, BDirectory &target_dir, char *target_name) FS_THROW_FSEXCEPTION
+{
 	status_t rc;
 	entry_ref eref;
 	bool count_this_link = true;
@@ -1036,7 +1065,6 @@ FSContext :: CopyLink(EntryIterator &i, BEntry &source_entry, BDirectory &target
 
 
 	if (mCopyLinksInstead == false) {		// then try to create a link
-
 		BSymLink source_link(&source_entry);
 		{
 			FS_REMOVE_POSSIBLE_ANSWER(fRetryOperation);
@@ -1131,7 +1159,7 @@ FSContext :: CopyLink(EntryIterator &i, BEntry &source_entry, BDirectory &target
 
 		// Precond:		TargetVolume set, target_name is B_FILE_NAME_LENGTH long
 void	// Postcond:	source_entry will be unset
-FSContext :: CopyDirectory(EntryIterator &i, BEntry &source_entry, BDirectory &target_dir, char *target_name) FS_THROW_FSEXCEPTION {
+FSContext::CopyDirectory(EntryIterator &i, BEntry &source_entry, BDirectory &target_dir, char *target_name) FS_THROW_FSEXCEPTION {
 
 	status_t rc;
 	BDirectory new_dir;
@@ -1153,7 +1181,7 @@ FSContext :: CopyDirectory(EntryIterator &i, BEntry &source_entry, BDirectory &t
 				
 				case B_ENTRY_NOT_FOUND: {
 					FS_SET_OPERATION(kCreatingDirectory);
-					FS_OPERATION(target_dir.CreateDirectory(target_name, &new_dir));
+					CreateDirectory(&target_dir, target_name, &new_dir);
 					target_dir_ok = true;
 					mDirectoryCreatedByUs = true;
 					break;
@@ -1292,7 +1320,7 @@ FSContext :: CopyDirectory(EntryIterator &i, BEntry &source_entry, BDirectory &t
 }
 
 void
-FSContext :: CheckCancelInCopyFile() FS_THROW_FSEXCEPTION {
+FSContext::CheckCancelInCopyFile() FS_THROW_FSEXCEPTION {
 	try {
 	
 		CheckCancel();
@@ -1320,7 +1348,7 @@ FSContext :: CheckCancelInCopyFile() FS_THROW_FSEXCEPTION {
 }
 
 void	// Precond:		mSameDevice is properly set (by SourceDirSetter), TargetDevice is set, target_name is B_FILE_NAME_LENGTH long
-FSContext :: CopyFile(BEntry &source_entry, BDirectory &target_dir, char *target_name) FS_THROW_FSEXCEPTION {
+FSContext::CopyFile(BEntry &source_entry, BDirectory &target_dir, char *target_name) FS_THROW_FSEXCEPTION {
 
 	status_t rc;
 	BFile source_file, target_file;
@@ -1333,7 +1361,7 @@ FSContext :: CopyFile(BEntry &source_entry, BDirectory &target_dir, char *target
 	off_t target_size_before_append;
 	
 	try {
-	
+
 		off_t file_size;
 		FS_OPERATION(source_file.GetSize(&file_size));
 		
@@ -1415,14 +1443,27 @@ FSContext :: CopyFile(BEntry &source_entry, BDirectory &target_dir, char *target
 			}
 		}
 		
-		source_entry.Unset();		// spare some fd's
-		
 		CheckCancelInCopyFile();
 		
 		if (target_file.InitCheck() != B_OK) {
 			touched = true;
 			FS_OPERATION(target_file.SetTo(&target_dir, target_name, B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE));
+			
+			if (gTrackerSettings.UndoEnabled()) {
+				BEntry entry(&target_dir, target_name);
+				entry_ref new_ref;
+				entry.GetRef(&new_ref);
+				entry_ref orig_ref;
+				source_entry.GetRef(&orig_ref);
+								
+				BMessage *undo = new BMessage(kCopySelectionTo);
+				undo->AddRef("new_ref", &new_ref);
+				undo->AddRef("orig_ref", &orig_ref);
+				gUndoHistory.AddItemToContext(undo, this);
+			}
 		}
+		
+		source_entry.Unset();		// spare some fd's
 		
 		NextEntryCreated(target_dir, target_name);
 		
@@ -1520,7 +1561,7 @@ FSContext :: CopyFile(BEntry &source_entry, BDirectory &target_dir, char *target
 }
 
 void
-FSContext :: CopyFileInnerLoopTwoDevices(BFile &source_file, BFile &target_file) FS_THROW_FSEXCEPTION {
+FSContext::CopyFileInnerLoopTwoDevices(BFile &source_file, BFile &target_file) FS_THROW_FSEXCEPTION {
 	status_t rc;
 
 	mMainThreadID = find_thread(0);
@@ -1572,7 +1613,7 @@ FSContext :: CopyFileInnerLoopTwoDevices(BFile &source_file, BFile &target_file)
 }
 
 void
-FSContext :: CopyFileReaderThread(BFile *file, ChunkList *chunks, sem_id chunk_sem, sem_id reader_sem,
+FSContext::CopyFileReaderThread(BFile *file, ChunkList *chunks, sem_id chunk_sem, sem_id reader_sem,
 									sem_id writer_sem) FS_THROW_FSEXCEPTION {
 
 	status_t rc;
@@ -1680,7 +1721,7 @@ FSContext :: CopyFileReaderThread(BFile *file, ChunkList *chunks, sem_id chunk_s
 }
 
 void	// file is a pointer to skip unneccesary copy ctor in LaunchInNewThread
-FSContext :: CopyFileWriterThread(BFile *file, ChunkList *chunks, sem_id chunk_sem, sem_id &reader_sem,
+FSContext::CopyFileWriterThread(BFile *file, ChunkList *chunks, sem_id chunk_sem, sem_id &reader_sem,
 									sem_id writer_sem) FS_NOTHROW {
 
 	mWriterThreadRunning = true;
@@ -1768,7 +1809,7 @@ exit:
 }
 
 void
-FSContext :: CopyFileInnerLoop(BFile &source_file, BFile &target_file, off_t file_size) FS_THROW_FSEXCEPTION {
+FSContext::CopyFileInnerLoop(BFile &source_file, BFile &target_file, off_t file_size) FS_THROW_FSEXCEPTION {
 	off_t read_pos = 0, write_pos;
 	size_t chunk_size = kMinChunkSize;
 	
@@ -1813,7 +1854,6 @@ FSContext :: CopyFileInnerLoop(BFile &source_file, BFile &target_file, off_t fil
 						CheckCancelInCopyFile();
 		
 						while ((this_chunk = source_file.Read(buffer_pos, (space_left > chunk_size) ? chunk_size : space_left)) < 0) {
-										
 							skip_recalc = true;
 							if (ErrorHandler(this_chunk) == false)
 								TRESPASS();							// this is an illegal false return from ErrorHandler
@@ -1902,10 +1942,12 @@ FSContext :: CopyFileInnerLoop(BFile &source_file, BFile &target_file, off_t fil
 }
 
 void
-FSContext :: CalculateNewChunkSize(size_t &chunk_size, off_t upper_limit, bigtime_t start_time) FS_NOTHROW {
+FSContext::CalculateNewChunkSize(size_t &chunk_size, off_t upper_limit, bigtime_t start_time) FS_NOTHROW {
 
-	size_t old_chunk_size = chunk_size;
+	chunk_size = 256 * 1024;
+	return;
 	
+	size_t old_chunk_size = chunk_size;
 	chunk_size = (size_t) ((float)chunk_size / (system_time() - start_time) * kProgressUpdateRate);
 	
 	if (chunk_size > old_chunk_size * 2)			// allow limited growth only
@@ -1925,7 +1967,7 @@ FSContext :: CalculateNewChunkSize(size_t &chunk_size, off_t upper_limit, bigtim
 }
 
 bool	// Precond: mSourceDir is set
-FSContext :: CopyEntry(EntryIterator &i, EntryRef &ref, BDirectory &target_dir, const char *i_target_name,
+FSContext::CopyEntry(EntryIterator &i, EntryRef &ref, BDirectory &target_dir, const char *i_target_name,
 						bool first_run) FS_THROW_FSEXCEPTION {
 
 	status_t rc;
@@ -1933,6 +1975,11 @@ FSContext :: CopyEntry(EntryIterator &i, EntryRef &ref, BDirectory &target_dir, 
 	if (mSourceDir == target_dir  &&  i_target_name == 0) {
 		for (;;)
 			Interaction(kSourceAndTargetIsTheSame);
+	}
+	
+	if (gTrackerSettings.UndoEnabled()) {
+		gUndoHistory.SetSourceForContext(mSourceDir, this);
+		gUndoHistory.SetTargetForContext(target_dir, this);
 	}
 	
 	char target_name[B_FILE_NAME_LENGTH];
@@ -1999,7 +2046,7 @@ FSContext :: CopyEntry(EntryIterator &i, EntryRef &ref, BDirectory &target_dir, 
 }
 
 void
-FSContext :: CopyRecursive(EntryIterator &i, BDirectory &target_dir, bool first_run) FS_THROW_FSEXCEPTION {
+FSContext::CopyRecursive(EntryIterator &i, BDirectory &target_dir, bool first_run) FS_THROW_FSEXCEPTION {
 
 	status_t rc = 0;
 
@@ -2038,7 +2085,7 @@ FSContext :: CopyRecursive(EntryIterator &i, BDirectory &target_dir, bool first_
 }
 
 status_t
-FSContext :: CopyTo(EntryIterator *i, BDirectory &target_dir, bool async) FS_NOTHROW {
+FSContext::CopyTo(EntryIterator *i, BDirectory &target_dir, bool async) FS_NOTHROW {
 
 	if (async) {
 		#if FS_CONFIG_MULTITHREADED
@@ -2047,9 +2094,7 @@ FSContext :: CopyTo(EntryIterator *i, BDirectory &target_dir, bool async) FS_NOT
 			return CopyTo(i, target_dir, false);
 		#endif		
 	} else {
-	
 		auto_ptr<EntryIterator> _i(i);
-
 		return CopyTo(*i, target_dir);
 	}
 	
@@ -2058,7 +2103,7 @@ FSContext :: CopyTo(EntryIterator *i, BDirectory &target_dir, bool async) FS_NOT
 
 // this one is for the New template copy: no progress indication, and not async
 status_t	// Precond: target name must be a B_FILE_NAME_LENGTH sized mutable buffer!
-FSContext :: CopyFileTo(entry_ref &_ref, BDirectory &target_dir, char *target_name) FS_NOTHROW {
+FSContext::CopyFileTo(entry_ref &_ref, BDirectory &target_dir, char *target_name) FS_NOTHROW {
 
 	EntryRef ref(_ref);
 
@@ -2105,7 +2150,7 @@ FSContext :: CopyFileTo(entry_ref &_ref, BDirectory &target_dir, char *target_na
 }
 
 status_t
-FSContext :: CopyTo(EntryIterator &i, BDirectory &target_dir) FS_NOTHROW {
+FSContext::CopyTo(EntryIterator &i, BDirectory &target_dir) FS_NOTHROW {
 
 	try {
 	
@@ -2147,7 +2192,7 @@ FSContext :: CopyTo(EntryIterator &i, BDirectory &target_dir) FS_NOTHROW {
 
 
 void	// Precond: SetTargetVolume() was called, mRootSourceDir is needed for CopyLink
-FSContext :: MoveToRecursive(EntryIterator &i, BDirectory &target_dir, bool first_run) FS_THROW_FSEXCEPTION {
+FSContext::MoveToRecursive(EntryIterator &i, BDirectory &target_dir, bool first_run) FS_THROW_FSEXCEPTION {
 
 	status_t rc;
 	
@@ -2159,9 +2204,8 @@ FSContext :: MoveToRecursive(EntryIterator &i, BDirectory &target_dir, bool firs
 	BEntry entry;
 	char name_buf[B_FILE_NAME_LENGTH];
 	bool retry_entry = false;
+	int32 askOnceOnly = kNotConfirmed;
 	
-	ASSERT_WITH_MESSAGE((mSourceDir != target_dir), "FSContext::MoveTo() was called with sourcedir = destinationdir");
-
 	while (retry_entry  ||  i.GetNext(ref)) {
 		retry_entry = false;
 		bool count_this_entry = true;
@@ -2176,6 +2220,11 @@ FSContext :: MoveToRecursive(EntryIterator &i, BDirectory &target_dir, bool firs
 				FS_SET_OPERATION(kInitializing);
 				FS_OPERATION(sds.SetSourceDir(ref));
 				sds.SetRootSourceDir(first_run);
+				ASSERT_WITH_MESSAGE((mSourceDir != target_dir), "FSContext::MoveTo() was called with sourcedir = destinationdir");
+				if (gTrackerSettings.UndoEnabled()) {
+					gUndoHistory.SetSourceForContext(mSourceDir, this);
+					gUndoHistory.SetTargetForContext(target_dir, this);
+				}
 			}
 
 			FS_OPERATION(entry.SetTo(ref));
@@ -2302,8 +2351,17 @@ FSContext :: MoveToRecursive(EntryIterator &i, BDirectory &target_dir, bool firs
 				char *name = 0;
 				char name_buf_for_target[B_FILE_NAME_LENGTH];
 				
-				while (keep_on_trying) {
+				// save redo data
+				entry_ref orig_ref;
+				if (gTrackerSettings.UndoEnabled())
+					entry.GetRef(&orig_ref);
 				
+				while (keep_on_trying) {
+					if (!ConfirmChangeIfWellKnownDirectory(&entry, "move", false, &askOnceOnly)) {
+						FS_CONTROL_THROW(kSkipEntry);
+						break;
+					}
+					
 					switch ((rc = entry.MoveTo(&target_dir, name, clobber))) {
 						default:
 							if (ErrorHandler(rc) == false)
@@ -2320,6 +2378,15 @@ FSContext :: MoveToRecursive(EntryIterator &i, BDirectory &target_dir, bool firs
 
 						case B_OK:
 							keep_on_trying = false;
+							if (gTrackerSettings.UndoEnabled()) {
+								entry_ref new_ref;
+								entry.GetRef(&new_ref);
+								
+								BMessage *undo = new BMessage(kMoveSelectionTo);
+								undo->AddRef("new_ref", &new_ref);
+								undo->AddRef("orig_ref", &orig_ref);
+								gUndoHistory.AddItemToContext(undo, this);
+							}
 							continue;
 						
 						case B_FILE_EXISTS: {
@@ -2453,7 +2520,7 @@ FSContext :: MoveToRecursive(EntryIterator &i, BDirectory &target_dir, bool firs
 }
 
 status_t
-FSContext :: MoveTo(EntryIterator *i, BDirectory &target_dir, bool async) FS_NOTHROW {
+FSContext::MoveTo(EntryIterator *i, BDirectory &target_dir, bool async) FS_NOTHROW {
 
 	if (async) {
 		#if FS_CONFIG_MULTITHREADED
@@ -2472,7 +2539,7 @@ FSContext :: MoveTo(EntryIterator *i, BDirectory &target_dir, bool async) FS_NOT
 }
 
 status_t
-FSContext :: MoveTo(EntryIterator &i, BDirectory &target_dir) FS_NOTHROW {
+FSContext::MoveTo(EntryIterator &i, BDirectory &target_dir) FS_NOTHROW {
 
 	if (IsTrashDir(target_dir))				// if target is a trash then switch to MoveToTrash
 		return MoveToTrash(i);
@@ -2513,7 +2580,7 @@ FSContext :: MoveTo(EntryIterator &i, BDirectory &target_dir) FS_NOTHROW {
 }
 
 status_t
-FSContext :: GetOriginalPath(BNode &in_node, BPath &in_path) FS_NOTHROW {
+FSContext::GetOriginalPath(BNode &in_node, BPath &in_path) FS_NOTHROW {
 
 	int32 size;
 	char buf[B_PATH_NAME_LENGTH + 4];
@@ -2530,7 +2597,7 @@ FSContext :: GetOriginalPath(BNode &in_node, BPath &in_path) FS_NOTHROW {
 }
 
 void	// Precond:		SetTargetVolume() was called
-FSContext :: RestoreFromTrash(BEntry &entry) FS_THROW_FSEXCEPTION {
+FSContext::RestoreFromTrash(BEntry &entry) FS_THROW_FSEXCEPTION {
 
 	status_t rc = B_OK;
 	
@@ -2538,6 +2605,10 @@ FSContext :: RestoreFromTrash(BEntry &entry) FS_THROW_FSEXCEPTION {
 	char buf[B_PATH_NAME_LENGTH + 4];
 	BNode node(&entry);
 	BPath original_path;
+	
+	entry_ref orig_ref;
+	if (gTrackerSettings.UndoEnabled())
+		entry.GetRef(&orig_ref);
 	
 	if (GetOriginalPath(node, original_path) != B_OK) {
 	
@@ -2563,7 +2634,7 @@ FSContext :: RestoreFromTrash(BEntry &entry) FS_THROW_FSEXCEPTION {
 		
 			if ((size = parent_dir.ReadAttr(kAttrOriginalPath, B_STRING_TYPE, 0, buf, B_PATH_NAME_LENGTH)) > 0) {
 					
-				// Found the attribute, figure out there this file used to live
+				// Found the attribute, figure out where this file used to live
 				buf[size] = 0;					// append a possibly missing leading zero
 				
 				FS_OPERATION(original_path.SetTo(buf));
@@ -2628,6 +2699,15 @@ FSContext :: RestoreFromTrash(BEntry &entry) FS_THROW_FSEXCEPTION {
 				}
 			case B_OK:
 				keep_on_trying = false;
+				if (gTrackerSettings.UndoEnabled()) {
+					entry_ref new_ref;
+					entry.GetRef(&new_ref);
+								
+					BMessage *undo = new BMessage(kRestoreFromTrash);
+					undo->AddRef("new_ref", &new_ref);
+					undo->AddRef("orig_ref", &orig_ref);
+					gUndoHistory.AddItemToContext(undo, this);
+				}	
 				break;
 
 			default:
@@ -2642,7 +2722,7 @@ FSContext :: RestoreFromTrash(BEntry &entry) FS_THROW_FSEXCEPTION {
 }
 
 status_t
-FSContext :: RestoreFromTrash(EntryIterator *i, bool async) FS_NOTHROW {
+FSContext::RestoreFromTrash(EntryIterator *i, bool async) FS_NOTHROW {
 
 	if (async) {
 		#if FS_CONFIG_MULTITHREADED
@@ -2661,7 +2741,7 @@ FSContext :: RestoreFromTrash(EntryIterator *i, bool async) FS_NOTHROW {
 }
 
 status_t
-FSContext :: RestoreFromTrash(EntryIterator &i) FS_NOTHROW {
+FSContext::RestoreFromTrash(EntryIterator &i) FS_NOTHROW {
 
 	PreparingOperation();
 
@@ -2683,18 +2763,14 @@ FSContext :: RestoreFromTrash(EntryIterator &i) FS_NOTHROW {
 
 	while (retry_entry  ||  i.GetNext(ref)) {
 		retry_entry = false;
-		
 		BEntry entry;
 
 		try {
-			
 			FS_SET_CURRENT_ENTRY(ref);
-
 			CheckCancel();
 		
 			{
 				FS_SET_OPERATION(kInitializing);
-				
 				FS_OPERATION(entry.SetTo(ref));
 
 				if (TargetDevice() != ref.Device())
@@ -2702,9 +2778,7 @@ FSContext :: RestoreFromTrash(EntryIterator &i) FS_NOTHROW {
 			}
 
 			RestoreFromTrash(entry);
-
 			mProgressInfo.EntryDone();
-			
 		} catch (FSException e) {
 			if (e == kSkipEntry)
 				mProgressInfo.SkipEntry();
@@ -2718,7 +2792,7 @@ FSContext :: RestoreFromTrash(EntryIterator &i) FS_NOTHROW {
 
 void	// Precond:		trash_dir may be uninitialized
 		// Postcond:	entry will follow the entry to the Trash
-FSContext :: MoveToTrash(dev_t device, BEntry &entry, BDirectory &trash_dir) FS_THROW_FSEXCEPTION {
+FSContext::MoveToTrash(dev_t device, BEntry &entry, BDirectory &trash_dir) FS_THROW_FSEXCEPTION {
 
 	status_t rc;
 	
@@ -2740,10 +2814,19 @@ FSContext :: MoveToTrash(dev_t device, BEntry &entry, BDirectory &trash_dir) FS_
 	if (trash_dir.Contains(&entry))
 		return;
 		
+	entry_ref orig_ref;
+	if (gTrackerSettings.UndoEnabled())
+		entry.GetRef(&orig_ref);
+	
 	node_ref dir_node_ref;
 	
 	bool is_dir = entry.IsDirectory();
 	if (is_dir) {
+		if (!ConfirmChangeIfWellKnownDirectory(&entry, "delete", false)) {
+			FS_CONTROL_THROW(kSkipEntry);
+			return;
+		}
+		
 		BDirectory dir;
 		FS_OPERATION(dir.SetTo(&entry));
 		FS_OPERATION(dir.GetNodeRef(&dir_node_ref));
@@ -2765,10 +2848,8 @@ FSContext :: MoveToTrash(dev_t device, BEntry &entry, BDirectory &trash_dir) FS_
 	FS_OPERATION(entry.GetPath(&old_path));
 	
 	do {
-	
 		MakeUniqueName(trash_dir, name);
 		FS_OPERATION_ETC(entry.MoveTo(&trash_dir, name), rc != B_ENTRY_NOT_FOUND  &&  rc != B_FILE_EXISTS, NOP);
-		
 	} while (rc == B_FILE_EXISTS);
 	
 	// write old path to the attributes, no matter if fails
@@ -2778,13 +2859,23 @@ FSContext :: MoveToTrash(dev_t device, BEntry &entry, BDirectory &trash_dir) FS_
 		time_t time = real_time_clock();
 		node.WriteAttr(kAttrTrashedDate, B_TIME_TYPE, 0, &time, sizeof(time));
 	}
+	
+	if (gTrackerSettings.UndoEnabled()) {
+		entry_ref new_ref;
+		entry.GetRef(&new_ref);
+		
+		BMessage *undo = new BMessage(kDelete); // kMoveToTrash gives 22 here?!
+		undo->AddRef("new_ref", &new_ref);
+		undo->AddRef("orig_ref", &orig_ref);
+		gUndoHistory.AddItemToContext(undo, this);
+	}	
 
 	if (is_dir)
-		DirectoryTrashed(dir_node_ref);
+		DirectoryTrashed(dir_node_ref);  // to close ev. open windows
 }
 
 status_t
-FSContext :: MoveToTrashAsync(EntryIterator *i, bool async) FS_NOTHROW {
+FSContext::MoveToTrashAsync(EntryIterator *i, bool async) FS_NOTHROW {
 
 	if (async) {
 		#if FS_CONFIG_MULTITHREADED
@@ -2803,7 +2894,7 @@ FSContext :: MoveToTrashAsync(EntryIterator *i, bool async) FS_NOTHROW {
 }
 
 status_t
-FSContext :: MoveToTrash(EntryIterator &i) FS_NOTHROW {
+FSContext::MoveToTrash(EntryIterator &i) FS_NOTHROW {
 
 	PreparingOperation();
 
@@ -2877,7 +2968,7 @@ FSContext :: MoveToTrash(EntryIterator &i) FS_NOTHROW {
 
 
 void	// Precond:		SetTargetVolume() was called, SourceDirSetter is active
-FSContext :: CheckTargetDirectory(BEntry &source_dir_entry, BDirectory &target_dir, bool check_source) FS_THROW_FSEXCEPTION {
+FSContext::CheckTargetDirectory(BEntry &source_dir_entry, BDirectory &target_dir, bool check_source) FS_THROW_FSEXCEPTION {
 	// check_source: this way we can spare an entry.IsDirectory() call, it's set by the caller with S_ISDIR()
 
 	status_t rc;
@@ -2918,7 +3009,7 @@ FSContext :: CheckTargetDirectory(BEntry &source_dir_entry, BDirectory &target_d
 }
 
 void
-FSContext :: CopyAdditionals(BNode &source, BNode &target) FS_THROW_FSEXCEPTION {
+FSContext::CopyAdditionals(BNode &source, BNode &target) FS_THROW_FSEXCEPTION {
 
 #if defined(DOIT)
   #error Macro redefined
@@ -3018,7 +3109,7 @@ FSContext :: CopyAdditionals(BNode &source, BNode &target) FS_THROW_FSEXCEPTION 
 
 
 void
-FSContext :: CopyAttributes(BNode &source, BNode &target) FS_THROW_FSEXCEPTION {
+FSContext::CopyAttributes(BNode &source, BNode &target) FS_THROW_FSEXCEPTION {
 
 	if (mTargetVolume.KnowsAttr() == false)
 		return;
@@ -3077,40 +3168,59 @@ FSContext :: CopyAttributes(BNode &source, BNode &target) FS_THROW_FSEXCEPTION {
 }
 
 status_t
-FSContext :: CreateNewFolder(const node_ref &in_dir_node, const char *in_name, entry_ref *in_new_entry,
+FSContext::CreateNewFolder(const node_ref &in_dir_node, const char *in_name, entry_ref *in_new_entry,
 								node_ref *in_new_node) FS_NOTHROW {
 
 	status_t rc;
 	
 	BDirectory dir(&in_dir_node), new_dir;
 	char name_buf[B_FILE_NAME_LENGTH];
-	strcpy(name_buf, (in_name) ? in_name : "New Folder");
+	strcpy(name_buf, (in_name) ? in_name : LOCALE("New Folder"));
 	
 	if ((rc = dir.InitCheck()) == B_OK) {
 	
 		// if name was given don't try to find an original name
-		while ((rc = dir.CreateDirectory(name_buf, &new_dir)) == B_FILE_EXISTS  &&  in_name == 0)
+		while ((rc = dir.CreateDirectory(name_buf, &new_dir)) == B_FILE_EXISTS  &&  in_name == NULL)
 			MakeUniqueName(dir, name_buf);
 		
 		if (rc != B_OK)
 			return rc;
 			
-		if (in_new_node != 0)
+		if (in_new_node != NULL)
 			FS_STATIC_OPERATION(new_dir.GetNodeRef(in_new_node));
 	
-		if (in_new_entry != 0) {
+		if (in_new_entry != NULL) {
 			BEntry entry;
 			FS_STATIC_OPERATION(new_dir.GetEntry(&entry));
-		
 			FS_STATIC_OPERATION(entry.GetRef(in_new_entry));
+		}
+		
+		if (gTrackerSettings.UndoEnabled()) {
+			entry_ref new_ref;
+			BNode node;
+			if (in_new_entry == NULL) {
+				BEntry entry;
+				new_dir.GetEntry(&entry);
+				entry.GetRef(&new_ref);
+			}
+			BEntry entry;
+			entry_ref orig_ref;
+			dir.GetEntry(&entry);
+			entry.GetRef(&orig_ref);
 			
+			BMessage *undo = new BMessage(kNewFolder);
+			undo->AddRef("new_ref", (in_new_entry == NULL ? &new_ref : in_new_entry));
+			undo->AddRef("orig_ref", &orig_ref);
+			if (in_name != NULL)
+				undo->AddString("name", in_name);
+			gUndoHistory.AddItem(undo);
 		}
 	}
 	return rc;
 }
 
 void
-FSContext :: MakeUniqueName(BPath &path, const char *suffix) FS_THROW_FSEXCEPTION {
+FSContext::MakeUniqueName(BPath &path, const char *suffix) FS_THROW_FSEXCEPTION {
 
 	status_t rc;
 	BString str(path.Path());
@@ -3133,7 +3243,7 @@ FSContext :: MakeUniqueName(BPath &path, const char *suffix) FS_THROW_FSEXCEPTIO
 }
 
 void
-FSContext :: MakeUniqueName(BDirectory &dir, char *name, const char *suffix) FS_NOTHROW {
+FSContext::MakeUniqueName(BDirectory &dir, char *name, const char *suffix) FS_NOTHROW {
 
 	if ( ! dir.Contains(name))
 		return;
@@ -3234,7 +3344,7 @@ FSContext :: MakeUniqueName(BDirectory &dir, char *name, const char *suffix) FS_
 
 // private recursive delete
 void
-FSContext :: RemoveRecursive(EntryIterator &i, bool progress_enabled, bool first_run) FS_THROW_FSEXCEPTION {
+FSContext::RemoveRecursive(EntryIterator &i, bool progress_enabled, bool first_run) FS_THROW_FSEXCEPTION {
 
 	status_t rc;
 
@@ -3243,38 +3353,34 @@ FSContext :: RemoveRecursive(EntryIterator &i, bool progress_enabled, bool first
 
 	while (retry_entry  ||  i.GetNext(ref)) {
 		retry_entry = false;
-
 		BEntry entry;
 		
 		try {
-	
 			FS_SET_CURRENT_ENTRY(ref);
-
 			CheckCancel();
 
 			{
 				FS_SET_OPERATION(kInitializing);
-
 				FS_OPERATION(entry.SetTo(ref));
 			}
 			
 			if (first_run)
 				AboutToDeleteOrTrash(entry);
-
-			while ((rc = entry.Remove()) < 0) {
 			
+			if (!ConfirmChangeIfWellKnownDirectory(&entry, "delete", false)) {
+				FS_CONTROL_THROW(kSkipEntry);
+			}
+			
+			while ((rc = entry.Remove()) < 0) {
 				if (rc == B_DIRECTORY_NOT_EMPTY) {
-				
 					DirEntryIterator dei;
 					i.RegisterNested(dei);
 					
 					FS_OPERATION(dei.SetTo(entry));
 					
 					RemoveRecursive(dei, progress_enabled, false);		// empty directory, not the first run
-					
 					continue;									// and try again
 				}
-	
 				if (rc == B_ENTRY_NOT_FOUND  ||  ErrorHandler(rc) == false)
 					break;
 			}
@@ -3294,7 +3400,7 @@ FSContext :: RemoveRecursive(EntryIterator &i, bool progress_enabled, bool first
 }
 
 status_t
-FSContext :: Remove(EntryIterator *i, bool askbefore, bool async) FS_NOTHROW {
+FSContext::Remove(EntryIterator *i, bool askbefore, bool async) FS_NOTHROW {
 
 	if (async) {
 		#if FS_CONFIG_MULTITHREADED
@@ -3313,27 +3419,21 @@ FSContext :: Remove(EntryIterator *i, bool askbefore, bool async) FS_NOTHROW {
 }
 
 status_t
-FSContext :: Remove(EntryIterator &i, bool in_ask_before) FS_NOTHROW {
+FSContext::Remove(EntryIterator &i, bool in_ask_before) FS_NOTHROW {
 
 	PreparingOperation();
-
 	FS_SET_OPERATION(kRemoving);
 
 	try {
-	
 		if (in_ask_before) {
-
 			FS_REMOVE_POSSIBLE_ANSWER(fRetryOperation | fRetryEntry);
 
 			switch (Interaction(kAboutToDelete)) {
-				
 				case kGoOnAndDelete:
 					break;
-					
 				case kMoveToTrash:
 					MoveToTrash(i);
 					return B_OK;
-					
 				default:
 					TRESPASS();
 					return B_OK;
@@ -3345,25 +3445,21 @@ FSContext :: Remove(EntryIterator &i, bool in_ask_before) FS_NOTHROW {
 
 		{
 			FS_SET_OPERATION(kInitializing);
-			
 			AccumulateItemsAndSize(i);
 		}
 
 		FS_ADD_POSSIBLE_ANSWER(fRetryEntry + fSkipEntry);
-		
 		OperationBegins();
-
 		RemoveRecursive(i, true, true);	// progress on, first run
 		
 	} catch (FSException e) {
 		return e;
 	}
-	
 	return B_OK;
 }
 
 void		// smart delete: will set the operation, and it's interactive; no progress indication
-FSContext :: Remove(BPath &path) FS_THROW_FSEXCEPTION {
+FSContext::Remove(BPath &path) FS_THROW_FSEXCEPTION {
 
 	status_t rc;
 	BEntry entry;
@@ -3375,7 +3471,7 @@ FSContext :: Remove(BPath &path) FS_THROW_FSEXCEPTION {
 }
 
 void
-FSContext :: Remove(BDirectory &dir, const char *file) FS_THROW_FSEXCEPTION {
+FSContext::Remove(BDirectory &dir, const char *file) FS_THROW_FSEXCEPTION {
 
 	status_t rc;
 	
@@ -3393,7 +3489,7 @@ FSContext :: Remove(BDirectory &dir, const char *file) FS_THROW_FSEXCEPTION {
 
 // central private delete: will set the operation, and it's interactive; no progress indication
 void
-FSContext :: Remove(BEntry &entry, operation in_op) FS_THROW_FSEXCEPTION {
+FSContext::Remove(BEntry &entry, operation in_op) FS_THROW_FSEXCEPTION {
 
 	status_t rc;
 	
@@ -3408,7 +3504,7 @@ FSContext :: Remove(BEntry &entry, operation in_op) FS_THROW_FSEXCEPTION {
 }
 
 status_t
-FSContext :: CreateLinkTo(EntryIterator *i, BDirectory &target_dir, bool relative, bool async) FS_NOTHROW {
+FSContext::CreateLinkTo(EntryIterator *i, BDirectory &target_dir, bool relative, bool async) FS_NOTHROW {
 	
 	if (async) {
 		#if FS_CONFIG_MULTITHREADED
@@ -3428,7 +3524,7 @@ FSContext :: CreateLinkTo(EntryIterator *i, BDirectory &target_dir, bool relativ
 }
 
 status_t
-FSContext :: CreateLinkTo(EntryIterator &i, BDirectory &target_dir, bool relative) FS_NOTHROW {
+FSContext::CreateLinkTo(EntryIterator &i, BDirectory &target_dir, bool relative) FS_NOTHROW {
 
 	PreparingOperation();
 
@@ -3487,7 +3583,7 @@ FSContext :: CreateLinkTo(EntryIterator &i, BDirectory &target_dir, bool relativ
 				node_ref target_nref;
 				FS_OPERATION(target_dir.GetNodeRef(&target_nref));
 				if (target_nref == mSourceDirNodeRef)
-					MakeUniqueName(target_dir, target_name, " link");	// make a unique name if link to the same dir
+					MakeUniqueName(target_dir, target_name, LOCALE(" link"));	// make a unique name if link to the same dir
 				
 				if (CreateLink(entry, target_dir, target_name, relative) == true) {
 	
@@ -3554,7 +3650,7 @@ FSContext :: CreateLinkTo(EntryIterator &i, BDirectory &target_dir, bool relativ
 // XXX should it set entry type to link?
 // source_entry is the actual target of the link and target_name will be the link name.
 bool	// Precond:		target_name is big enough to hold B_FILE_NAME_LENGTH
-FSContext :: CreateLink(BEntry &source_entry, BDirectory &target_dir, char *target_name, bool relative) FS_THROW_FSEXCEPTION {
+FSContext::CreateLink(BEntry &source_entry, BDirectory &target_dir, char *target_name, bool relative) FS_THROW_FSEXCEPTION {
 
 	status_t rc;
 	
@@ -3564,6 +3660,11 @@ FSContext :: CreateLink(BEntry &source_entry, BDirectory &target_dir, char *targ
 	
 	BString source;
 	BSymLink new_link;
+	
+	// save redo data
+	entry_ref orig_ref;
+	if (gTrackerSettings.UndoEnabled())
+		source_entry.GetRef(&orig_ref);
 	
 	FS_OPERATION(target_dir.InitCheck());
 
@@ -3597,7 +3698,6 @@ FSContext :: CreateLink(BEntry &source_entry, BDirectory &target_dir, char *targ
 		WDChanger wdc;
 		
 		if (relative) {
-			
 			BPath path;
 			BEntry entry;
 			FS_OPERATION(target_dir.GetEntry(&entry));
@@ -3622,7 +3722,6 @@ FSContext :: CreateLink(BEntry &source_entry, BDirectory &target_dir, char *targ
 					src_slash = src + 1;				// save positions to be able to revert
 					dest_slash = dest + 1;
 				}
-					
 				++src;
 				++dest;
 			}
@@ -3640,24 +3739,31 @@ FSContext :: CreateLink(BEntry &source_entry, BDirectory &target_dir, char *targ
 						source.Prepend("../");
 					++dest;
 				}
-				
 				if (*src  !=  0)
 					source.Append(src);
-	
 			}											// else source and target are in the same dir
 			
 			source.Append(source_path.Leaf());
-			
 		} else {	// absolute link
-		
 			source = source_path.Path();
-			
 		}
 		
 		for (;;) {
 			rc = target_dir.CreateSymLink(target_name, source.String(), &new_link);
-			if (rc >= 0)
+			if (rc >= 0) {
+				if (gTrackerSettings.UndoEnabled()) {
+					gUndoHistory.SetTargetForContext(target_dir, this);
+					BEntry entry(&target_dir, target_name);
+					entry_ref new_ref;
+					entry.GetRef(&new_ref);
+					
+					BMessage *undo = new BMessage((relative ? kCreateRelativeLink : kCreateLink));
+					undo->AddRef("new_ref", &new_ref);
+					undo->AddRef("orig_ref", &orig_ref);
+					gUndoHistory.AddItemToContext(undo, this);
+				}
 				break;
+			}
 				
 			if (rc == B_FILE_EXISTS) {
 			
@@ -3723,7 +3829,7 @@ FSContext :: CreateLink(BEntry &source_entry, BDirectory &target_dir, char *targ
 
 
 status_t
-FSContext :: Duplicate(EntryIterator *i, bool async) FS_NOTHROW {
+FSContext::Duplicate(EntryIterator *i, bool async) FS_NOTHROW {
 
 	if (async) {
 		#if FS_CONFIG_MULTITHREADED
@@ -3742,7 +3848,7 @@ FSContext :: Duplicate(EntryIterator *i, bool async) FS_NOTHROW {
 }
 
 status_t
-FSContext :: Duplicate(EntryIterator &i) FS_NOTHROW {
+FSContext::Duplicate(EntryIterator &i) FS_NOTHROW {
 
 	PreparingOperation();
 
@@ -3755,14 +3861,12 @@ FSContext :: Duplicate(EntryIterator &i) FS_NOTHROW {
 	);
 	
 	try {
-	
 		ResetProgressIndicator();
 		mProgressInfo.EnableTotalSizeProgress();	// indicate that we will be dealing with sizes, not only entries
 		InitProgressIndicator();
 
 		{
 			FS_SET_OPERATION(kInitializing);
-			
 			AccumulateItemsAndSize(i);
 		}
 		
@@ -3783,7 +3887,6 @@ FSContext :: Duplicate(EntryIterator &i) FS_NOTHROW {
 			retry_entry = false;
 	
 			try {
-		
 				FS_SET_CURRENT_ENTRY(ref);
 		
 				CheckCancel();
@@ -3811,12 +3914,10 @@ FSContext :: Duplicate(EntryIterator &i) FS_NOTHROW {
 					CheckTargetDirectory(entry, target_dir);	// may not duplicate in the trash...
 				}
 				
-				MakeUniqueName(target_dir, target_name, " copy");
-
+				MakeUniqueName(target_dir, target_name, LOCALE(" copy"));
 				CopyEntry(i, ref, target_dir, target_name);
 
 			} catch (FSException e) {
-		
 				FS_FILTER_EXCEPTION_2(	kSkipEntry,		mProgressInfo.SkipEntry(); mProgressInfo.DisableTotals(),
 										kRetryEntry,	retry_entry = true;
 														mProgressInfo.SkipEntry();
@@ -3834,7 +3935,7 @@ FSContext :: Duplicate(EntryIterator &i) FS_NOTHROW {
 
 // returns true if the given device is on the same hardware as the previously set target
 bool	// Precond:		SetTargetVolume() was called and it set mSourceDevice
-FSContext :: IsTargetOnSameDevice() FS_NOTHROW {
+FSContext::IsTargetOnSameDevice() FS_NOTHROW {
 	
 	if (TargetDevice() == mSourceDevice)
 		return true;
@@ -3866,14 +3967,14 @@ FSContext :: IsTargetOnSameDevice() FS_NOTHROW {
 
 
 void
-FSContext :: SetTargetVolume(dev_t device) FS_THROW_FSEXCEPTION {
+FSContext::SetTargetVolume(dev_t device) FS_THROW_FSEXCEPTION {
 
 	status_t rc;
 	FS_OPERATION(mTargetVolume.SetTo(device));
 }
 
 void
-FSContext :: SetTargetVolume(BDirectory &target_dir) FS_THROW_FSEXCEPTION {
+FSContext::SetTargetVolume(BDirectory &target_dir) FS_THROW_FSEXCEPTION {
 
 	status_t rc;
 	
@@ -3882,10 +3983,8 @@ FSContext :: SetTargetVolume(BDirectory &target_dir) FS_THROW_FSEXCEPTION {
 	FS_OPERATION(mTargetVolume.SetTo(nref.device));
 }
 
-
-
 void
-FSContext :: CreateDirectory(BPath &path, bool is_dir) FS_THROW_FSEXCEPTION {
+FSContext::CreateDirectory(BPath &path, bool is_dir) FS_THROW_FSEXCEPTION {
 
 	FS_SET_OPERATION(kCreatingDirectory);		// recursion-safe
 
@@ -3893,23 +3992,16 @@ FSContext :: CreateDirectory(BPath &path, bool is_dir) FS_THROW_FSEXCEPTION {
 	
 	BEntry entry;
 	for (;;) {
-	
 		entry.SetTo(path.Path());
-	
 		if (entry.InitCheck() == B_ENTRY_NOT_FOUND) {
-	
 			BPath parent_path;
 			FS_OPERATION(path.GetParent(&parent_path));
 	
 			CreateDirectory(parent_path, true);
 			break;
-	
 		} else if (entry.InitCheck() == B_OK) {
-		
 			break;
-			
 		} else {
-		
 			if (ErrorHandler(entry.InitCheck()) == false)
 				return;
 		}
@@ -3923,27 +4015,51 @@ FSContext :: CreateDirectory(BPath &path, bool is_dir) FS_THROW_FSEXCEPTION {
 		FS_OPERATION(entry.GetParent(&parent));
 		FS_OPERATION(entry.GetName(name));
 		
-		FS_OPERATION(parent.CreateDirectory(name, NULL));
+		CreateDirectory(&parent, name, NULL);
 	}
 }
 
 
+status_t
+FSContext::CreateDirectory(BDirectory *target_dir, char *target_name, BDirectory *new_dir)
+{
+	status_t rc;
+	FS_SET_OPERATION(kCreatingDirectory);
+	FS_OPERATION(target_dir->CreateDirectory(target_name, new_dir));
+
+	if (gTrackerSettings.UndoEnabled()) {
+		BEntry entry(target_dir, target_name);
+		entry_ref new_ref;
+		entry.GetRef(&new_ref);
+		entry_ref orig_ref;
+		target_dir->GetEntry(&entry);
+		entry.GetRef(&orig_ref);
+		
+		BMessage *undo = new BMessage(kNewFolder);
+		undo->AddRef("new_ref", &new_ref);
+		undo->AddRef("orig_ref", &orig_ref);
+		undo->AddString("name", target_name);
+		gUndoHistory.AddItemToContext(undo, this);
+	}
+
+	return rc;
+}
 
 
-EntryList::STLEntryIterator :: STLEntryIterator(const STLEntryIterator &other) FS_NOTHROW
+EntryList::STLEntryIterator::STLEntryIterator(const STLEntryIterator &other) FS_NOTHROW
 						: EntryIterator(), mContainer(other.mContainer), mPos(other.mPos) {
 }
 
-EntryList::STLEntryIterator :: STLEntryIterator(cont_type &incontainer) FS_NOTHROW : mContainer(incontainer), mPos(mContainer.begin()) {
+EntryList::STLEntryIterator::STLEntryIterator(cont_type &incontainer) FS_NOTHROW : mContainer(incontainer), mPos(mContainer.begin()) {
 }
 
 int32
-EntryList::STLEntryIterator :: CountEntries() FS_NOTHROW {
+EntryList::STLEntryIterator::CountEntries() FS_NOTHROW {
 	return mContainer.size();
 }
 
 bool
-EntryList::STLEntryIterator :: GetNext(EntryRef &entry) FS_NOTHROW {
+EntryList::STLEntryIterator::GetNext(EntryRef &entry) FS_NOTHROW {
 	while (mPos < mContainer.end()  &&  IsFilteredOut(*mPos))
 		++mPos;
 			
@@ -3956,12 +4072,12 @@ EntryList::STLEntryIterator :: GetNext(EntryRef &entry) FS_NOTHROW {
 }
 
 EntryIterator *
-EntryList::STLEntryIterator :: Clone() FS_NOTHROW {
+EntryList::STLEntryIterator::Clone() FS_NOTHROW {
 	return new STLEntryIterator(*this);
 }
 	
 void
-EntryList::STLEntryIterator :: Rewind() FS_NOTHROW {
+EntryList::STLEntryIterator::Rewind() FS_NOTHROW {
 	mPos = mContainer.begin();
 }
 
@@ -3982,7 +4098,6 @@ EntryList::EntryList(const BMessage &in_msg) FS_NOTHROW {
 	back_insert_iterator<inherited> bii(*this);
 
 	for (int32 i = 0;  ; ++i) {
-	
 		entry_ref ref;
 		if (in_msg.FindRef("refs", i, &ref) != B_OK)
 			break;
@@ -3992,8 +4107,7 @@ EntryList::EntryList(const BMessage &in_msg) FS_NOTHROW {
 }
 
 status_t
-FSContext :: GetSpecialDir(BDirectory &in_dir, dev_t in_device, directory_which in_which, node_ref_list_t &in_list) FS_NOTHROW {
-
+FSContext::GetSpecialDir(BDirectory &in_dir, dev_t in_device, directory_which in_which, node_ref_list_t &in_list) FS_NOTHROW {
 	status_t rc;
 	node_ref ref;
 	if ((rc = GetSpecialDir(ref, in_device, in_which, in_list)) == B_OK)
@@ -4006,8 +4120,7 @@ FSContext :: GetSpecialDir(BDirectory &in_dir, dev_t in_device, directory_which 
 }
 
 status_t
-FSContext :: GetSpecialDir(node_ref &in_dir_ref, dev_t in_device, directory_which in_which, node_ref_list_t &in_list) FS_NOTHROW {
-
+FSContext::GetSpecialDir(node_ref &in_dir_ref, dev_t in_device, directory_which in_which, node_ref_list_t &in_list) FS_NOTHROW {
 	BAutolock l(sLocker);
 	
 	status_t rc;
@@ -4021,6 +4134,7 @@ FSContext :: GetSpecialDir(node_ref &in_dir_ref, dev_t in_device, directory_whic
 		}
 		++pos;
 	}
+	
 									// we've been asked about a dir on such a device on which we don't know what the special dir is
 	char buf[B_PATH_NAME_LENGTH];	// so try to record it (probably it was mounted after we started up)
 	
@@ -4059,7 +4173,7 @@ FSContext :: GetSpecialDir(node_ref &in_dir_ref, dev_t in_device, directory_whic
 }
 
 bool
-FSContext :: IsSpecialDir(const node_ref &in_ref, directory_which in_which, node_ref_list_t &in_list) FS_NOTHROW {
+FSContext::IsSpecialDir(const node_ref &in_ref, directory_which in_which, node_ref_list_t &in_list) FS_NOTHROW {
 
 	node_ref special_ref;
 
@@ -4069,7 +4183,7 @@ FSContext :: IsSpecialDir(const node_ref &in_ref, directory_which in_which, node
 
 
 status_t
-FSContext :: EmptyTrash(bool async) FS_NOTHROW {
+FSContext::EmptyTrash(bool async) FS_NOTHROW {
 
 	if (async) {
 		#if FS_CONFIG_MULTITHREADED
@@ -4156,7 +4270,7 @@ FSContext :: EmptyTrash(bool async) FS_NOTHROW {
 
 ONLY_WITH_TRACKER(
 
-	EntryList :: EntryList(const PoseList &inlist) FS_NOTHROW {
+	EntryList::EntryList(const PoseList &inlist) FS_NOTHROW {
 		int32 count = inlist.CountItems();
 		reserve(count);
 		back_insert_iterator<inherited> bii(*this);
@@ -4171,7 +4285,7 @@ ONLY_WITH_TRACKER(
 
 
 status_t
-FSContext :: GetOriginalPath(BEntry &in_entry, BPath &in_path) FS_NOTHROW {
+FSContext::GetOriginalPath(BEntry &in_entry, BPath &in_path) FS_NOTHROW {
 	BNode node(&in_entry);
 	if (node.InitCheck() != B_OK)
 		return node.InitCheck();
@@ -4179,7 +4293,7 @@ FSContext :: GetOriginalPath(BEntry &in_entry, BPath &in_path) FS_NOTHROW {
 }
 
 bool
-FSContext :: IsInTrash(const entry_ref &in_ref) FS_NOTHROW {
+FSContext::IsInTrash(const entry_ref &in_ref) FS_NOTHROW {
 	BEntry entry(&in_ref);
 	if (entry.InitCheck() != B_OK)
 		return false;
@@ -4187,7 +4301,7 @@ FSContext :: IsInTrash(const entry_ref &in_ref) FS_NOTHROW {
 }
 
 bool
-FSContext :: IsInTrash(const BEntry &in_entry) FS_NOTHROW {
+FSContext::IsInTrash(const BEntry &in_entry) FS_NOTHROW {
 	BDirectory trash;
 	entry_ref ref;
 	if (in_entry.GetRef(&ref) != B_OK ||  GetTrashDir(trash, ref.device) != B_OK)
@@ -4196,7 +4310,7 @@ FSContext :: IsInTrash(const BEntry &in_entry) FS_NOTHROW {
 }
 
 bool
-FSContext :: IsTrashDir(const entry_ref &in_ref) FS_NOTHROW {
+FSContext::IsTrashDir(const entry_ref &in_ref) FS_NOTHROW {
 	BDirectory dir(&in_ref);
 	if (dir.InitCheck() != B_OK)
 		return false;
@@ -4204,16 +4318,33 @@ FSContext :: IsTrashDir(const entry_ref &in_ref) FS_NOTHROW {
 }
 
 bool
-FSContext :: IsTrashDir(const BEntry &in_entry) FS_NOTHROW {
+FSContext::IsTrashDir(const BEntry &in_entry) FS_NOTHROW {
 	BDirectory dir(&in_entry);
 	if (dir.InitCheck() != B_OK)
 		return false;
 	return IsSpecialDir(dir, B_TRASH_DIRECTORY, sTrashDirList);
 }
 
+bool
+FSContext::IsTrashEmpty() FS_NOTHROW {
+	BDirectory dir;
+	BVolume vol;
+	BVolumeRoster roster;
+	roster.Rewind();
+	
+	while (roster.GetNextVolume(&vol) == B_OK) {
+		if (GetSpecialDir(dir, vol.Device(), B_TRASH_DIRECTORY, sTrashDirList) != B_OK)
+			continue;
+		
+		if (dir.CountEntries() > 0)
+			return false;
+	}
+	
+	return true;
+}
 
 bool
-FSContext :: IsHomeDir(const BEntry &in_entry) FS_NOTHROW {
+FSContext::IsHomeDir(const BEntry &in_entry) FS_NOTHROW {
 	BDirectory dir(&in_entry);
 	if (dir.InitCheck() != B_OK)
 		return false;
@@ -4221,22 +4352,69 @@ FSContext :: IsHomeDir(const BEntry &in_entry) FS_NOTHROW {
 }
 
 bool
-FSContext :: IsPrintersDir(const BEntry &in_entry) FS_NOTHROW {
+FSContext::IsHomeDir(const entry_ref &in_ref) FS_NOTHROW {
+	BDirectory dir(&in_ref);
+	if (dir.InitCheck() != B_OK)
+		return false;
+	return IsSpecialDir(dir, B_USER_DIRECTORY, sHomeDirList);
+}
+
+bool
+FSContext::IsPrintersDir(const BEntry &in_entry) FS_NOTHROW {
 	BDirectory dir(&in_entry);
 	if (dir.InitCheck() != B_OK)
 		return false;
 	return IsSpecialDir(dir, B_USER_PRINTERS_DIRECTORY, sPrintersDirList);
 }
 
+bool
+FSContext::IsDevDir(const char* in_string) FS_NOTHROW {
+	BString teststring = in_string;
+	teststring = teststring.Truncate(4);
+	if (strcmp(teststring.String(), "/dev/") == 0 || strcmp(teststring.String(), "/dev") == 0)
+		return true;
+	else
+		return false;
+}
+
+bool
+FSContext::IsDevDir(const BPath &in_path) FS_NOTHROW {
+	BString teststring = in_path.Path();
+	return IsDevDir(teststring.String());
+}
+
+bool
+FSContext::IsDevDir(const BEntry &in_entry) FS_NOTHROW {
+	BPath path;
+	in_entry.GetPath(&path);
+	return IsDevDir(path);
+}
+
+bool
+FSContext::IsSystemDir(const BEntry &in_entry) FS_NOTHROW {
+	BDirectory dir(&in_entry);
+	if (dir.InitCheck() != B_OK)
+		return false;
+	return IsSpecialDir(dir, B_BEOS_SYSTEM_DIRECTORY, sSystemDirList);
+}
+
+bool
+FSContext::IsBeOSDir(const BEntry &in_entry) FS_NOTHROW {
+	BDirectory dir(&in_entry);
+	if (dir.InitCheck() != B_OK)
+		return false;
+	return IsSpecialDir(dir, B_BEOS_DIRECTORY, sBeOSDirList);
+}
+
 status_t
-FSContext :: GetBootDesktopDir(BDirectory &in_dir) FS_NOTHROW {
+FSContext::GetBootDesktopDir(BDirectory &in_dir) FS_NOTHROW {
 	BVolume root;
 	BVolumeRoster().GetBootVolume(&root);
 	return GetSpecialDir(in_dir, root.Device(), B_DESKTOP_DIRECTORY, sDesktopDirList);
 }
 
 bool
-FSContext :: IsDesktopDir(const BEntry &in_entry) FS_NOTHROW {
+FSContext::IsDesktopDir(const BEntry &in_entry) FS_NOTHROW {
 	BDirectory dir(&in_entry);
 	if (dir.InitCheck() != B_OK)
 		return false;
@@ -4244,7 +4422,7 @@ FSContext :: IsDesktopDir(const BEntry &in_entry) FS_NOTHROW {
 }
 
 bool
-FSContext :: IsSpecialDir(const BDirectory &in_dir, directory_which in_which, node_ref_list_t &in_list) FS_NOTHROW {
+FSContext::IsSpecialDir(const BDirectory &in_dir, directory_which in_which, node_ref_list_t &in_list) FS_NOTHROW {
 	node_ref ref;
 	if (in_dir.GetNodeRef(&ref) != B_OK)
 		return false;
@@ -4254,7 +4432,7 @@ FSContext :: IsSpecialDir(const BDirectory &in_dir, directory_which in_which, no
 
 
 void
-FSContext :: NextEntryCreated(BDirectory &target_dir, const char *target_name, BDirectory *for_pi_noderef) {
+FSContext::NextEntryCreated(BDirectory &target_dir, const char *target_name, BDirectory *for_pi_noderef) {
 
 	status_t rc;
 	BNode target_node;
@@ -4271,7 +4449,7 @@ FSContext :: NextEntryCreated(BDirectory &target_dir, const char *target_name, B
 }
 
 bool
-FSContext :: RemoveIfNewer(BEntry &source_entry, BDirectory &target_dir, const char *target_name) FS_THROW_FSEXCEPTION {
+FSContext::RemoveIfNewer(BEntry &source_entry, BDirectory &target_dir, const char *target_name) FS_THROW_FSEXCEPTION {
 	status_t rc;
 	BEntry target_entry;
 	
@@ -4283,7 +4461,7 @@ FSContext :: RemoveIfNewer(BEntry &source_entry, BDirectory &target_dir, const c
 }
 	
 bool
-FSContext :: RemoveIfNewer(BEntry &source_entry, BEntry &target_entry) FS_THROW_FSEXCEPTION {
+FSContext::RemoveIfNewer(BEntry &source_entry, BEntry &target_entry) FS_THROW_FSEXCEPTION {
 	status_t rc;
 	time_t source_mod, target_mod;
 	
@@ -4300,7 +4478,3 @@ FSContext :: RemoveIfNewer(BEntry &source_entry, BEntry &target_entry) FS_THROW_
 
 
 }	// namespace fs
-
-
-
-

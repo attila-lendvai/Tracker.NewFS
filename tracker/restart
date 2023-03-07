@@ -1,0 +1,6 @@
+#!/bin/sh
+quit application/x-vnd.Be-TRAK
+quit application/x-vnd.Be-TSKB
+sleep 2
+/boot/beos/system/Tracker > /dev/null 2>&1 &
+/boot/beos/system/Deskbar > /dev/null 2>&1&

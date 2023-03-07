@@ -37,6 +37,8 @@ All rights reserved.
 
 #include <Window.h>
 
+#include "FavoritesConfig.h"
+#include "FavoritesMenu.h"
 #include "LockingList.h"
 #include "Model.h"
 #include "SlowContextPopup.h"
@@ -114,6 +116,7 @@ public:
 	bool IsTrash() const;
 	bool InTrash() const;
 	bool IsPrintersDir() const;
+	bool IsDevDir() const;
 
 	virtual bool IsShowing(const node_ref *) const;
 	virtual bool IsShowing(const entry_ref *) const;
@@ -164,9 +167,9 @@ public:
 		bool createNew = false, bool createFolder = true);
 
 	// add-on iteration
-	void EachAddon(bool(*)(const Model *, const char *, uint32 shortcut, void *), void *);
-
+	void EachAddon(bool(*)(const Model *, const char *, uint32 shortcut, bool primary, void *), void *);
 	BPopUpMenu *ContextMenu();
+	uint32 ModifiersAtContextPopup() const;
 	
 	// drag&drop support
 	status_t DragStart(const BMessage *);
@@ -182,6 +185,9 @@ public:
 	void SetPathWatchingEnabled(bool);
 	bool IsPathWatchingEnabled(void) const;
 	
+	void SetIsAboutToBeActivated(bool);
+	bool IsAboutToBeActivated() const;
+	
 protected:
 	virtual BPoseView *NewPoseView(Model *, BRect, uint32);
 		// instantiate a different flavor of BPoseView for different
@@ -196,19 +202,32 @@ protected:
 	virtual void SetUpDefaultState();
 		// these two virtuals control setting up a new folder that
 		// does not have any state settings yet with the default
+
+	enum UpdateMenuContext {
+		kMenuBarContext,
+		kPosePopUpContext,
+		kWindowPopUpContext
+	};
 	
 	virtual	void AddMenus();
 	virtual void AddShortcuts();
 		// add equivalents of the menu shortcuts to the menuless desktop window
 	virtual	void AddFileMenu(BMenu *menu);
+	virtual void AddEditMenu(BMenu *menu);
 	virtual	void AddWindowMenu(BMenu *menu);
 	
 	virtual void AddContextMenus();
 
 	virtual	void AddFileContextMenus(BMenu *);
+			void AddFileContextMenus(BMenu *, bool);
+	virtual void AddEditContextMenus(BMenu *);
+			void AddEditContextMenus(BMenu *, UpdateMenuContext);
 	virtual	void AddWindowContextMenus(BMenu *);
+			void AddWindowContextMenus(BMenu *, bool);
+	virtual void AddContextSensitive(BMenu *);
 	virtual	void AddVolumeContextMenus(BMenu *);
 	virtual	void AddDropContextMenus(BMenu *);
+	virtual void AddTrashContextMenu();
 	
 	virtual void RepopulateMenus();
 	
@@ -227,30 +246,28 @@ protected:
 
 	virtual	void BuildAddOnMenu(BMenu *);
 
-	enum UpdateMenuContext {
-		kMenuBarContext,
-		kPosePopUpContext,
-		kWindowPopUpContext
-	};
-	
 	virtual void UpdateMenu(BMenu *menu, UpdateMenuContext context);
 	
 	BHandler *ResolveSpecifier(BMessage *, int32, BMessage *, int32,
 		const char *);
 
-	bool EachAddon(BPath &path, bool(*)(const Model *, const char *, uint32, void *),
+	bool EachAddon(BPath &path, bool(*)(const Model *, const char *, uint32, bool, void *),
 		BObjectList<Model> *, void *);
 	void LoadAddOn(BMessage *);
 
 	BPopUpMenu *fFileContextMenu;
+	BPopUpMenu *fEditContextMenu;
 	BPopUpMenu *fWindowContextMenu;
 	BPopUpMenu *fDropContextMenu;
 	BPopUpMenu *fVolumeContextMenu;
+	BPopUpMenu *fTrashContextMenu;
 	BSlowContextMenu *fDragContextMenu;
 	BMenuItem *fMoveToItem;
 	BMenuItem *fCopyToItem;
 	BMenuItem *fCreateLinkItem;
 	BMenuItem *fOpenWithItem;
+	BMenuItem *fUndoItem;
+	BMenuItem *fRedoItem;
 	ModelMenuItem *fNavigationItem;
 	BMenuBar *fMenuBar;
 	BNavigator *fNavigator;
@@ -258,7 +275,9 @@ protected:
 	LockingList<BWindow> *fWindowList;
 	BMenu *fAttrMenu;
 	BMenu *fWindowMenu;
+	BMenu *fEditMenu;
 	BMenu *fFileMenu;
+	FavoritesMenu *fFavoritesMenu;
 
 	SelectionWindow *fSelectionWindow;
 
@@ -267,6 +286,7 @@ protected:
 	bool fIsTrash;
 	bool fInTrash;
 	bool fIsPrinters;
+	bool fIsDevDir;
 
 	uint32 fContainerWindowFlags;
 	BackgroundImage *fBackgroundImage;
@@ -285,6 +305,11 @@ private:
 	bool fSaveStateIsEnabled;
 	
 	bool fIsWatchingPath;
+	bool fIsAboutToBeActivated;
+
+	TFavoritesConfigWindow *fConfigWindow;
+	
+	uint32 fModifiersAtContextPopup;
 
 	typedef BWindow _inherited;
 
@@ -367,6 +392,12 @@ BContainerWindow::IsPrintersDir() const
 	return fIsPrinters;
 }
 
+inline bool
+BContainerWindow::IsDevDir() const
+{
+	return fIsDevDir;
+}
+
 inline void 
 BContainerWindow::SetUpDiskMenu(BMenu *)
 {
@@ -409,6 +440,27 @@ bool
 BContainerWindow::IsPathWatchingEnabled() const
 {
 	return fIsWatchingPath;
+}
+
+inline
+uint32
+BContainerWindow::ModifiersAtContextPopup() const
+{
+	return fModifiersAtContextPopup;
+}
+
+inline
+void
+BContainerWindow::SetIsAboutToBeActivated(bool enabled)
+{
+	fIsAboutToBeActivated = enabled;
+}
+
+inline
+bool
+BContainerWindow::IsAboutToBeActivated() const
+{
+	return fIsAboutToBeActivated;
 }
 
 filter_result ActivateWindowFilter(BMessage *message, BHandler **target,

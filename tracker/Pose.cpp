@@ -35,46 +35,28 @@ All rights reserved.
 #include <stdlib.h>
 #include <string.h>
 
+#include <Debug.h>
 #include <Volume.h>
 #include <fs_info.h>
-#include <Debug.h>
 
 #include "Attributes.h"
 #include "Commands.h"
 #include "FSClipboard.h"
 #include "IconCache.h"
-#include "Utilities.h"
-#include "PoseView.h"
 #include "Pose.h"
-#include "Tracker.h"
+#include "PoseView.h"
+#include "Utilities.h"
 
 int32
-CalcFreeSpace(dev_t device)
+CalcFreeSpace(BVolume *volume)
 {
-	BVolume volume(device);
-	fs_info info;
-	if (volume.InitCheck() == B_OK && fs_stat_dev(device,&info) == B_OK) {
-		// Philosophy here:
-		// Bars go on all drives with read/write capabilities
-		// Exceptions: Not on CDDA, but on NTFS/Ext2
-		// Also note that some volumes may return 0 when
-		// BVolume::Capacity() is called (believe-me... That *DOES*
-		// happen) so we also check for that.
-		off_t capacity = volume.Capacity();
-		if (((!volume.IsReadOnly() && strcmp(info.fsh_name,"cdda"))
-			|| !strcmp(info.fsh_name,"ntfs")
-			|| !strcmp(info.fsh_name,"ext2"))
-			&& (capacity > 0)) {
-			int32 percent = static_cast<int32>(volume.FreeBytes() / (capacity / 100));
+	off_t capacity = volume->Capacity();
+	int32 percent = static_cast<int32>(volume->FreeBytes() / (capacity / 100));
 
-			// warn below 20 MB of free space (if this is less than 10% of free space)
-			if (volume.FreeBytes() < 20 * 1024 * 1024 && percent < 10)
-				return -2 - percent;
-
-			return percent;
-		}
-	}
-	return -1;
+	// warn below 20 MB of free space (if this is less than 10% of free space)
+	if (volume->FreeBytes() < 20 * 1024 * 1024 && percent < 10)
+		return -2 - percent;
+	return percent;
 }
 
 // SymLink handling:
@@ -97,26 +79,49 @@ BPose::BPose(Model *model, BPoseView *view, bool selected)
 {
 	CreateWidgets(view);
 
-	if (model->IsVolume() && TrackerSettings().ShowVolumeSpaceBar()) {
+	if (model->IsVolume()) {
+		fs_info info;
 		dev_t device = model->NodeRef()->device;
-		fPercent = CalcFreeSpace(device);
+		BVolume *volume = new BVolume(device);
+		if (volume->InitCheck() == B_OK
+			&& fs_stat_dev(device, &info) == B_OK) {
+			// Philosophy here:
+			// Bars go on all drives with read/write capabilities
+			// Exceptions: Not on CDDA, but on NTFS/Ext2
+			// Also note that some volumes may return 0 when
+			// BVolume::Capacity() is called (believe-me... That *DOES*
+			// happen) so we also check for that.
+			off_t capacity = volume->Capacity();
+			if (((!volume->IsReadOnly() && strcmp(info.fsh_name,"cdda"))
+				|| !strcmp(info.fsh_name,"ntfs")
+				|| !strcmp(info.fsh_name,"ext2"))
+				&& (capacity > 0)) {
+				// The volume is ok and we want space bars on it
+				gPeriodicUpdatePoses.AddPose(this, view,
+					_PeriodicUpdateCallback, volume);
+				if (gTrackerSettings.ShowVolumeSpaceBar())
+					fPercent = CalcFreeSpace(volume);
+			} else
+				delete volume;
+		} else
+			delete volume;
 	}
 
 	if ((fClipboardMode = FSClipboardFindNodeMode(model,true)) != 0
 		&& !view->HasPosesInClipboard()) {
 		view->SetHasPosesInClipboard(true);
-		
-		BClipboardRefsWatcher *watcher = NULL;
-		if (dynamic_cast<TTracker *>(be_app) != NULL)
-			((TTracker *)be_app)->ClipboardRefsWatcher();
-
-		if (watcher)
-			watcher->AddNode(model->NodeRef());
 	}
 }
 
 BPose::~BPose()
 {
+	if (fModel->IsVolume()) {
+		// we might be registered for periodic updates
+		BVolume *volume = NULL;
+		if (gPeriodicUpdatePoses.RemovePose(this, (void **)&volume))
+			delete volume;
+	}
+
 	delete fModel;
 }
 
@@ -267,8 +272,15 @@ BPose::UpdateWidgetAndModel(Model *resolvedModel, const char *attrName,
 }
 
 bool
-BPose::UpdateVolumeSpaceBar(bool enabled)
+BPose::_PeriodicUpdateCallback(BPose *pose, void *cookie)
 {
+	return pose->UpdateVolumeSpaceBar((BVolume *)cookie);
+}
+
+bool
+BPose::UpdateVolumeSpaceBar(BVolume *volume)
+{
+	bool enabled = gTrackerSettings.ShowVolumeSpaceBar();
 	if (!enabled) {
 		if (fPercent == -1)
 			return false;
@@ -277,9 +289,7 @@ BPose::UpdateVolumeSpaceBar(bool enabled)
 		return true;
 	}
 
-	dev_t device = TargetModel()->NodeRef()->device;
-	int32 percent = CalcFreeSpace(device);
-
+	int32 percent = CalcFreeSpace(volume);
 	if (fPercent != percent) {
 		if (percent > 100)
 			fPercent = 100;
@@ -294,7 +304,7 @@ BPose::UpdateVolumeSpaceBar(bool enabled)
 void
 BPose::UpdateIcon(BPoint poseLoc, BPoseView *poseView)
 {
-	IconCache::iconCache->IconChanged(ResolvedModel());
+	IconCache::sIconCache->IconChanged(ResolvedModel());
 
 	BRect rect;
 	if (poseView->ViewMode() == kListMode) {
@@ -302,16 +312,11 @@ BPose::UpdateIcon(BPoint poseLoc, BPoseView *poseView)
 		rect.left += kListOffset;
 		rect.right = rect.left + B_MINI_ICON;
 		rect.top = rect.bottom - B_MINI_ICON;
-	} else if (poseView->ViewMode() == kIconMode) {
-		rect.left = fLocation.x;
-		rect.top = fLocation.y;
-		rect.right = rect.left + B_LARGE_ICON;
-		rect.bottom = rect.top + B_LARGE_ICON;
 	} else {
 		rect.left = fLocation.x;
 		rect.top = fLocation.y;
-		rect.right = rect.left + B_MINI_ICON;
-		rect.bottom = rect.top + B_MINI_ICON;
+		rect.right = rect.left + poseView->IconSizeInt();
+		rect.bottom = rect.top + poseView->IconSizeInt();
 	}
 
 	poseView->Invalidate(rect);
@@ -414,28 +419,32 @@ BPose::PointInPose(const BPoseView *poseView, BPoint where) const
 {
 	ASSERT(poseView->ViewMode() != kListMode);
 
-	if (poseView->ViewMode() == kIconMode) {
+	if (poseView->ViewMode() == kIconMode
+		|| poseView->ViewMode() == kScaleIconMode) {
 		// check icon rect, then actual icon pixel
 		BRect rect(fLocation, fLocation);
-		rect.right += B_LARGE_ICON - 1;
-		rect.bottom += B_LARGE_ICON - 1;
+		rect.right += poseView->IconSizeInt() - 1;
+		rect.bottom += poseView->IconSizeInt() - 1;
 
 		if (rect.Contains(where))
-			return TestLargeIconPixel(where - fLocation);
+			return IconCache::sIconCache->IconHitTest(where - fLocation,
+														ResolvedModel(),
+														kNormalIcon,
+														poseView->IconSize());
 
 		BTextWidget *widget = WidgetFor(poseView->FirstColumn()->AttrHash());
 		if (widget) {
 			float textWidth = ceilf(widget->TextWidth(poseView) + 1);
-			rect.left += (B_LARGE_ICON - textWidth) / 2;
+			rect.left += (poseView->IconSizeInt() - textWidth) / 2;
 			rect.right = rect.left + textWidth; 
 		}
 
-		rect.top = fLocation.y + B_LARGE_ICON;
+		rect.top = fLocation.y + poseView->IconSizeInt();
 		rect.bottom = rect.top + poseView->FontHeight();
 
 		return rect.Contains(where);
 	}
-
+	
 	// MINI_ICON_MODE rect calc
 	BRect rect(fLocation, fLocation);
 	rect.right += B_MINI_ICON + kMiniIconSeparator;
@@ -443,7 +452,7 @@ BPose::PointInPose(const BPoseView *poseView, BPoint where) const
 	BTextWidget *widget = WidgetFor(poseView->FirstColumn()->AttrHash());
 	if (widget)
 		rect.right += ceil(widget->TextWidth(poseView) + 1);
-
+	
 	return rect.Contains(where);
 }
 
@@ -480,9 +489,12 @@ BPose::PointInPose(BPoint loc, const BPoseView *poseView, BPoint where,
 
 void
 BPose::Draw(BRect rect, BPoseView *poseView, BView *drawView, bool fullDraw,
-	const BRegion *updateRgn, BPoint offset, bool selected, bool recaclulateText)
+	const BRegion *updateRgn, BPoint offset, bool selected, bool recalculateText)
 {
-	if (fClipboardMode == kMoveSelectionTo) {
+	// ToDo: Find a better way here! We force full redraws to clear the alpha
+	// channel. That way extended icons don't mess with their transparency...
+	
+	//if (fClipboardMode == kMoveSelectionTo) {
 		// If the background wasn't cleared and Draw() is not called after
 		// having edited a name or similar (with fullDraw)
 		if (!fBackgroundClean && !fullDraw) {
@@ -491,49 +503,70 @@ BPose::Draw(BRect rect, BPoseView *poseView, BView *drawView, bool fullDraw,
 			return;
 		} else
 			fBackgroundClean = false;
-	}
-
+	//}
+	
 	bool directDraw = (drawView == poseView);
-	bool windowActive = poseView->Window()->IsActive();
+	bool windowActive = poseView->Window()->IsActive() || ((BContainerWindow*)(poseView->Window()))->IsAboutToBeActivated();
 	bool showSelectionWhenInactive = poseView->fShowSelectionWhenInactive;
 	bool isDrawingSelectionRect = poseView->fIsDrawingSelectionRect;
-
+	
 	ModelNodeLazyOpener modelOpener(fModel);
-
+	
 	if (poseView->ViewMode() == kListMode) {
+		uint32 size = poseView->IconSizeInt();
 		BRect iconRect(rect);
 		iconRect.OffsetBy(offset);
 		iconRect.left += kListOffset;
-		iconRect.right = iconRect.left + B_MINI_ICON;
-		iconRect.top = iconRect.bottom - B_MINI_ICON;
-		if (!updateRgn || updateRgn->Intersects(iconRect)) 
-			DrawIcon(iconRect.LeftTop(), drawView, B_MINI_ICON, directDraw,
+		iconRect.right = iconRect.left + size;
+		iconRect.top = iconRect.bottom - size;
+		if (!updateRgn || updateRgn->Intersects(iconRect)) {
+			DrawIcon(iconRect.LeftTop(), drawView, poseView->IconSize(), directDraw,
 				!windowActive && !showSelectionWhenInactive);
-
+		}
+		
 		// draw text
-		for (int32 index = 0; ; index++) {
+		int32 columnsToDraw = 1;
+		if (fullDraw)
+			columnsToDraw = poseView->CountColumns();
+		
+		for (int32 index = 0; index < columnsToDraw; index++) {
 			BColumn *column = poseView->ColumnAt(index);
 			if (!column)
 				break;
-
+			
 			// if widget doesn't exist, create it
 			BTextWidget *widget = WidgetFor(column, poseView, modelOpener);
-
+			
 			if (widget && widget->IsVisible()) {
 				BRect widgetRect(widget->ColumnRect(rect.LeftTop(), column,
 					poseView));
-
+				
 				if (!updateRgn || updateRgn->Intersects(widgetRect)) {
 					BRect widgetTextRect(widget->CalcRect(rect.LeftTop(), column,
 						poseView));
 					
-					if (recaclulateText)
+					if (recalculateText)
 						widget->RecalculateText(poseView);
 					
-					widget->Draw(widgetRect, widgetTextRect, column->Width(),
-						poseView, drawView, selected, fClipboardMode, offset, directDraw);
-
-					if (index == 0 && selected) {
+					bool selectDuringDraw = directDraw && selected
+						&& (windowActive && !poseView->EraseWidgetTextBackground());
+					
+					if (index == 0 && selectDuringDraw) {
+						//draw with dark background to select text
+						drawView->PushState();
+						drawView->SetLowColor(0, 0, 0);
+					}
+					
+					if (index == 0)
+						widget->Draw(widgetRect, widgetTextRect, column->Width(),
+							poseView, drawView, selected, fClipboardMode, offset, directDraw);
+					else
+						widget->Draw(widgetTextRect, widgetTextRect, column->Width(),
+							poseView, drawView, false, fClipboardMode, offset, directDraw);
+					
+					if (index == 0 && selectDuringDraw)
+						drawView->PopState();
+					else if (index == 0 && selected) {
 						if (windowActive || isDrawingSelectionRect) {
 							widgetTextRect.OffsetBy(offset);
 							drawView->InvertRect(widgetTextRect);
@@ -548,9 +581,6 @@ BPose::Draw(BRect rect, BPoseView *poseView, BView *drawView, bool fullDraw,
 					}
 				}
 			}
-
-			if (index == 1 && !fullDraw)
-				break;
 		}
 	} else {
 
@@ -561,8 +591,7 @@ BPose::Draw(BRect rect, BPoseView *poseView, BView *drawView, bool fullDraw,
 		BPoint iconOrigin(fLocation);
 		iconOrigin += offset;
 
-		DrawIcon(iconOrigin, drawView, poseView->ViewMode() == kIconMode ?
-			B_LARGE_ICON : B_MINI_ICON, directDraw,
+		DrawIcon(iconOrigin, drawView, poseView->IconSize(), directDraw,
 			!windowActive && !showSelectionWhenInactive);
 		
 		BColumn *column = poseView->FirstColumn();
@@ -614,8 +643,7 @@ BPose::DeselectWithoutErasingBackground(BRect, BPoseView *poseView)
 
 	// draw icon directly
 	if (fPercent == -1)
-		DrawIcon(fLocation, poseView, poseView->ViewMode() == kIconMode ?
-			B_LARGE_ICON : B_MINI_ICON, true);
+		DrawIcon(fLocation, poseView, poseView->IconSize(), true);
 	else
 		UpdateIcon(fLocation, poseView);
 
@@ -701,12 +729,14 @@ BPose::WidgetFor(BColumn *column, BPoseView *poseView, ModelNodeLazyOpener &open
 	return widget;
 }
 
+/* depricated */
 bool
 BPose::TestLargeIconPixel(BPoint point) const
 {
-	return IconCache::iconCache->IconHitTest(point, ResolvedModel(),
+	return IconCache::sIconCache->IconHitTest(point, ResolvedModel(),
 		kNormalIcon, B_LARGE_ICON);
 }
+/* depricated */
 
 void
 BPose::DrawIcon(BPoint where, BView *view, icon_size kind, bool direct, bool drawUnselected)
@@ -718,12 +748,11 @@ BPose::DrawIcon(BPoint where, BView *view, icon_size kind, bool direct, bool dra
 	} else if (direct)
 		view->SetDrawingMode(B_OP_OVER);
 
-	IconCache::iconCache->Draw(ResolvedModel(), view, where,
+	IconCache::sIconCache->Draw(ResolvedModel(), view, where,
 		fIsSelected && !drawUnselected ? kSelectedIcon : kNormalIcon, kind, true);
 
 	if (fPercent != -1)
 		DrawBar(where, view, kind);
-
 }
 
 void 
@@ -732,9 +761,9 @@ BPose::DrawBar(BPoint where, BView *view, icon_size kind)
 	view->PushState();
 
 	int32 size,barWidth,barHeight, yOffset;
-	if (kind == B_LARGE_ICON) {
-		size = B_LARGE_ICON - 1;
-		barWidth = 7;
+	if (kind >= B_LARGE_ICON) {
+		size = kind - 1;
+		barWidth = (int32)((float)7 / (float)32 * (float)kind);
 		yOffset = 2;
 		barHeight = size - 4 - 2 * yOffset;
 	} else {
@@ -767,8 +796,7 @@ BPose::DrawBar(BPoint where, BView *view, icon_size kind)
 		barPos = barHeight;
 
 	// the free space bar
-	TrackerSettings settings;
-	view->SetHighColor(settings.FreeSpaceColor());
+	view->SetHighColor(gTrackerSettings.FreeSpaceColor());
 
 	rect.InsetBy(1,1);
 	BRect bar(rect);
@@ -779,7 +807,7 @@ BPose::DrawBar(BPoint where, BView *view, icon_size kind)
 	// the used space bar
 	bar.top = bar.bottom + 1;
 	bar.bottom = rect.bottom;
-	view->SetHighColor(fPercent < -1 ? settings.WarningSpaceColor() : settings.UsedSpaceColor());
+	view->SetHighColor(fPercent < -1 ? gTrackerSettings.WarningSpaceColor() : gTrackerSettings.UsedSpaceColor());
 	view->FillRect(bar);
 
 	view->PopState();
@@ -819,15 +847,16 @@ BPose::CalcRect(const BPoseView *poseView)
 	ASSERT(poseView->ViewMode() != kListMode);
 
 	BRect rect;
-	if (poseView->ViewMode() == kIconMode) {
+	if (poseView->ViewMode() == kIconMode
+		|| poseView->ViewMode() == kScaleIconMode) {
 		rect.left = fLocation.x;
-		rect.right = rect.left + B_LARGE_ICON;
+		rect.right = rect.left + poseView->IconSizeInt();
 
 		BTextWidget *widget = WidgetFor(poseView->FirstColumn()->AttrHash());
 		if (widget) {
 			float textWidth = ceilf(widget->TextWidth(poseView) + 1);
-			if (textWidth > B_LARGE_ICON) {
-				rect.left += (B_LARGE_ICON - textWidth) / 2;
+			if (textWidth > poseView->IconSizeInt()) {
+				rect.left += (poseView->IconSizeInt() - textWidth) / 2;
 				rect.right = rect.left + textWidth; 
 			}
 		}
@@ -868,7 +897,7 @@ BPose::PrintToStream()
 	PRINT(("location %s x:%f y:%f\n", HasLocation() ? "" : "unknown ",
 		HasLocation() ? Location().x : 0,
 		HasLocation() ? Location().y : 0));
-	PRINT(("%sautoplaced \n", WasAutoPlaced() ? "was " : "not "));
+	PRINT(("%s autoplaced \n", WasAutoPlaced() ? "was" : "not"));
 }
 
 #endif

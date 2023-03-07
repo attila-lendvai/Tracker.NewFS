@@ -40,6 +40,7 @@ All rights reserved.
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include "ObjectList.h"
 
 class BFile;
 class BDirectory;
@@ -146,9 +147,14 @@ public:
 	bool Add(SettingsArgvDispatcher *);
 		// return false if argv dispatcher with the same name already
 		// registered
+	bool Remove(const char* name);
 
 	void Write(const char *format, ...);
 	void VSWrite(const char *, va_list);
+	
+	int32 Count();
+	
+	const char *SettingsDirectory();
 
 private:
 	void MakeSettingsDirectory(BDirectory *);
@@ -159,11 +165,15 @@ private:
 
 	const char *fFileName;
 	const char *fSettingsDir;	// currently unused
-	SettingsArgvDispatcher **fList;
-	int32 fCount;
-	int32 fListSize;
+	BObjectList<SettingsArgvDispatcher> *fList;
 	BFile *fCurrentSettings;
 };
+
+inline int32
+Settings::Count()
+{
+	return fList->CountItems();
+}
 
 }
 

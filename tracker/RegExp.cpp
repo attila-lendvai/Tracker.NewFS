@@ -61,6 +61,7 @@ All rights reserved.
 // ALTERED VERSION: Adapted to ANSI C and C++ for the OpenTracker
 // project (www.opentracker.org), Jul 11, 2000.
 
+#include "Defines.h"
 #include <malloc.h>
 #include <stdio.h>
 #include <string.h>
@@ -190,7 +191,7 @@ const char *kRegExpErrorStringArray[] = {
 	"Corrupted opcode."
 };
 
-#ifdef DEBUG
+#if DEBUG
 int32 regnarrate = 0;
 #endif
 
@@ -911,12 +912,12 @@ RegExp::Match(const char *prog) const
 	const char *next;		// Next node.
 
 	scan = prog;
-#ifdef DEBUG
+#if DEBUG
 	if (scan != NULL && regnarrate)
 		fprintf(stderr, "%s(\n", Prop(scan));
 #endif
 	while (scan != NULL) {
-#ifdef DEBUG
+#if DEBUG
 		if (regnarrate)
 			fprintf(stderr, "%s...\n", Prop(scan));
 #endif
@@ -1205,7 +1206,7 @@ RegExp::IsMult(char c) const
 }
 
 
-#ifdef DEBUG
+#if DEBUG
 
 //
 // - Dump - dump a regexp onto stdout in vaguely comprehensible form

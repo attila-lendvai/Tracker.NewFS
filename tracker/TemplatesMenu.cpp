@@ -46,14 +46,15 @@ All rights reserved.
 
 #include "Commands.h"
 
-#include "TemplatesMenu.h"
 #include "IconMenuItem.h"
+#include "LanguageTheme.h"
 #include "MimeTypes.h"
+#include "TemplatesMenu.h"
 
 namespace BPrivate {
 
 const char *kTemplatesDirectory = "Tracker/Tracker New Templates";
-const char *kTemplatesMenuName = "New";
+const char *kTemplatesMenuName = "New ";
 
 static const char *kOpenTemplatesMenuName = "Edit Templates"B_UTF8_ELLIPSIS;
 
@@ -112,7 +113,7 @@ TemplatesMenu::BuildMenu(bool addItems)
 		delete RemoveItem(0L);
 
 	// Add the Folder
-	IconMenuItem *menuItem = new IconMenuItem("New Folder", new BMessage(kNewFolder),
+	IconMenuItem *menuItem = new IconMenuItem(LOCALE("New Folder"), new BMessage(kNewFolder),
 		B_DIR_MIMETYPE,B_MINI_ICON);
 	AddItem(menuItem);
 	menuItem->SetShortcut('N', 0);
@@ -172,7 +173,7 @@ TemplatesMenu::BuildMenu(bool addItems)
 	message->AddRef("refs", &dirRef);
 	
 	// Add item to show templates folder.
-	fOpenItem = new BMenuItem(kOpenTemplatesMenuName, message);
+	fOpenItem = new BMenuItem(LOCALE(kOpenTemplatesMenuName), message);
 	AddItem(fOpenItem);
 	if (dirRef == entry_ref())
 		fOpenItem->SetEnabled(false);

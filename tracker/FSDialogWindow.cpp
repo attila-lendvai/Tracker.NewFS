@@ -31,6 +31,7 @@ names are registered trademarks or trademarks of their respective holders.
 All rights reserved. */
 
 #include "FSDialogWindow.h"
+#include "LanguageTheme.h"
 
 #include <Debug.h>
 #include <Screen.h>
@@ -137,9 +138,9 @@ FSDialogWindow::SetType(type t) {
 	mType = t;
 	
 	if (mType == kError) {
-		SetTitle("Tracker Error");
+		SetTitle(LOCALE("Tracker Error"));
 	} else if (mType == kInteraction) {
-		SetTitle("Tracker Question");
+		SetTitle(LOCALE("Tracker Question"));
 	} else {
 		TRESPASS();
 	}
@@ -298,10 +299,10 @@ FSDialogWindow::QuitRequested() {
 
 
 FSDialogWindow::MainView::MainView() : inherited(BRect(), "MainView", B_FOLLOW_NONE, B_WILL_DRAW),
-										mContinueButton(BRect(), "ContinueButton", "Continue", new BMessage(kContinue),
+										mContinueButton(BRect(), "ContinueButton", LOCALE("Continue"), new BMessage(kContinue),
 											B_FOLLOW_NONE, B_WILL_DRAW),
-										mCancelButton(BRect(), "CancelButton", "Stop", new BMessage(kCancel)),
-										mRetryButton(BRect(), "RetryButton", "Retry", new BMessage(kRetry)),
+										mCancelButton(BRect(), "CancelButton", LOCALE("Stop"), new BMessage(kCancel)),
+										mRetryButton(BRect(), "RetryButton", LOCALE("Retry"), new BMessage(kRetry)),
 										mDialogView(0) {
 
 	SetViewColor(ui_color(B_PANEL_BACKGROUND_COLOR));
@@ -473,7 +474,7 @@ FSDialogWindow::TFSContextDialogView::SetInfoText() {
 	};
 	
 	static const InfoTextStyle sDefault			= { &be_plain_font,		{0, 0, 0, 0}};
-	static const InfoTextStyle sDefaultBold		= { &be_bold_font,		{0, 0, 0, 0}};
+//	static const InfoTextStyle sDefaultBold		= { &be_bold_font,		{0, 0, 0, 0}};
 	static const InfoTextStyle sStatic			= { &be_plain_font,		{20, 20, 20, 0}};
 	static const InfoTextStyle sRootOperation	= { &be_bold_font,		{0, 100, 50, 0}};
 	static const InfoTextStyle sEntry			= { &be_bold_font,		{0, 50, 100, 0}};
@@ -506,7 +507,8 @@ FSDialogWindow::TFSContextDialogView::SetInfoText() {
 	SET_STYLE(Static);
 //	SET_SHEAR;
 	SCALE_FONT(1.0);
-	str += "While\n";
+	str += LOCALE("While");
+	str += "\n";
 	
 	SET_STYLE(RootOperation);
 	str += mContext.AsString(mContext.RootOperation());
@@ -515,7 +517,7 @@ FSDialogWindow::TFSContextDialogView::SetInfoText() {
 		SET_STYLE(Default);
 		
 		str += " (";
-		str += mContext.TargetDirPrefix(mContext.RootOperation());
+		str += LOCALE(mContext.TargetDirPrefix(mContext.RootOperation()));
 		str += " ";
 		
 		BPath path;
@@ -538,14 +540,13 @@ FSDialogWindow::TFSContextDialogView::SetInfoText() {
 		SET_STYLE(Static);
 		SCALE_FONT(1.0);
 //		SET_SHEAR;
-		str += "The ";
 		
 		if (entry.IsFile())
-			str += "file ";
+			str += LOCALE("The file ");
 		else if (entry.IsSymLink())
-			str += "link ";
+			str += LOCALE("The link ");
 		else if (entry.IsDirectory())
-			str += "folder ";
+			str += LOCALE("The folder ");
 		else
 			TRESPASS();
 
@@ -558,7 +559,9 @@ FSDialogWindow::TFSContextDialogView::SetInfoText() {
 		
 		SET_STYLE(Default);
 		SCALE_FONT(0.9);
-		str += "  (from ";
+		str += "  (";
+		str += LOCALE("from");
+		str += " ";
 		
 		{
 			BString tmpstr(path.Path());
@@ -574,7 +577,8 @@ FSDialogWindow::TFSContextDialogView::SetInfoText() {
 		if (mContext.OperationStackSize() > 1) {
 			SET_STYLE(Static);
 //			SET_SHEAR;
-			str += "Current operation\n";
+			str += LOCALE("Current operation");
+			str += "\n";
 		
 			SET_STYLE(CurrentOperation);
 			str += mContext.AsString(mContext.CurrentOperation());
@@ -595,7 +599,8 @@ FSDialogWindow::TFSContextDialogView::SetInfoText() {
 	
 	SET_STYLE(Default);
 //	SET_SHEAR;
-	str += "Information:\n";
+	str += LOCALE("Information");
+	str += "\n";
 	
 	if (mType == kError) {
 	
@@ -625,7 +630,7 @@ FSDialogWindow::TFSContextDialogView::SetInfoText() {
 			case TFSContext::kDirectoryAlreadyExists:
 			case TFSContext::kTargetAlreadyExists: {
 				
-				str += mContext.AsString(mInteractionCode);
+				str += LOCALE(mContext.AsString(mInteractionCode));
 				
 				if (mContext.CurrentEntry() != 0  &&  mContext.TargetEntry() != 0) {
 					BEntry source(*mContext.CurrentEntry());
@@ -634,26 +639,30 @@ FSDialogWindow::TFSContextDialogView::SetInfoText() {
 						time_t source_mod, target_mod;
 						source.GetModificationTime(&source_mod);
 						target.GetModificationTime(&target_mod);
-						str += " (source ";
+						str += " (";
+						str += LOCALE("source");
+						str += " ";
 						if (source_mod > target_mod)
-							str += "is newer";
+							str += LOCALE("is newer");
 						else if (source_mod < target_mod)
-							str += "is older";
+							str += LOCALE("is older");
 						else
-							str += "was modified at the same time as target";
+							str += LOCALE("was modified at the same time as target");
 						if (source.IsFile()  &&  target.IsFile()) {
 							off_t source_size, target_size;
 							BFile source_node(&source, B_READ_ONLY), target_node(&target, B_READ_ONLY);
 							if (source_node.InitCheck() == B_OK  &&  target_node.InitCheck() == B_OK) {
 								source_node.GetSize(&source_size);
 								target_node.GetSize(&target_size);
-								str += " and ";
+								str += " ";
+								str += LOCALE("and");
+								str += " ";
 								if (source_size > target_size)
-									str += "bigger";
+									str += LOCALE("bigger");
 								else if (source_size < target_size)
-									str += "smaller";
+									str += LOCALE("smaller");
 								else
-									str += "has the same size";
+									str += LOCALE("has the same size");
 							}
 						}
 						str += ")";
@@ -666,7 +675,7 @@ FSDialogWindow::TFSContextDialogView::SetInfoText() {
 			case TFSContext::kNotEnoughFreeSpace:
 			case TFSContext::kNotEnoughFreeSpaceForThisFile: {
 				
-				str += mContext.AsString(mInteractionCode);
+				str += LOCALE(mContext.AsString(mInteractionCode));
 
 				// XXX todo: make it async and cancel if takes too long, or only set when done
 				TFSContext::ProgressInfo info;
@@ -679,40 +688,37 @@ FSDialogWindow::TFSContextDialogView::SetInfoText() {
 				
 				context -> CalculateItemsAndSize(*dei.get(), info);
 				if (info.IsTotalEnabled()) {
-					str += " (";
 					if (info.mTotalSize != 0) {
 						char buf[128];
 						TFSContext::GetSizeString(buf, info.mTotalSize);
-						str += buf;
-						str += " in Trash)";
+						char buffer[1024];
+						sprintf(buffer, LOCALE("(%s in Trash)"), buf);
+						str += buffer;
 					} else {
-						str += "Trash is empty)";
+						str += LOCALE("(The Trash is empty)");
 					}
 				}
 				break;
 			}
 			
 			case TFSContext::kAboutToDelete: {
-				str += "Are you sure you want to delete ";
-				if (mContext.EntryList().size() == 1) {
-					SET_STYLE(DefaultBold);
-					SCALE_FONT(1.1);
-					
-					//str += """;
-					str += mContext.EntryList().front().Name();
-					//str += """;
-					
-					SET_STYLE(Interaction);
-					SCALE_FONT(1.1);
-				} else {
-					str += "the selected entries";
-				}
-				str += "? This operation cannot be reverted!";
+				const char *format = LOCALE("Are you sure you want to delete "
+					"%s? This operation cannot be reverted!");
+				
+				char name[1024];
+				if (mContext.EntryList().size() == 1)
+					sprintf(name, "\"%s\"", mContext.EntryList().front().Name());
+				else
+					sprintf(name, LOCALE("the selected entries"));
+				
+				char buffer[2048];
+				sprintf(buffer, format, name);
+				str += buffer;
 				break;	
 			}
 			
 			default:
-				str += mContext.AsString(mInteractionCode);
+				str += LOCALE(mContext.AsString(mInteractionCode));
 				break;
 		}		
 	} else {
@@ -844,8 +850,15 @@ FSDialogWindow::TFSContextDialogView::AllAttached() {
 		if (mContext.IsAnswerPossible(TFSContext::fIgnore))
 			mRadioButtonView.AddChild(new CustomRadioButton(mContext, TFSContext::kIgnore));
 	}
-	
+
 	assert_cast<FSDialogWindow *>(Window()) -> Pack(true);
+
+	// autoselect the first item
+	CustomRadioButton *button = assert_cast<CustomRadioButton *>(mRadioButtonView.ChildAt(0));
+	if (button) {
+		button->SetValue(B_CONTROL_ON);
+		button->Invoke();
+	}
 }
 
 
@@ -960,7 +973,7 @@ FSDialogWindow::TFSContextDialogView::CustomRadioButton::CustomRadioButton(TFSCo
 	switch (static_cast<int32>(mCommand)) {
 		case TFSContext::kSkipOperation: {
 			
-			BString str("Skip operation");
+			BString str(LOCALE("Skip operation"));
 			if (context.SkipOperationTarget() != context.kInvalidOperation) {
 				str += " (";
 				str += context.AsString(context.SkipOperationTarget());
@@ -999,10 +1012,10 @@ FSDialogWindow::TFSContextDialogView::CustomRadioButton::MouseDown(BPoint point)
 void
 FSDialogWindow::TFSContextDialogView::CustomBBox::DrawAfterChildren(BRect rect) {
 							
-	TFSContextDialogView::RadioButtonView *bview = RadioButtonView();
+	TFSContextDialogView::RadioButtonView *bview = GetRadioButtonView();
 	if (bview -> HasExtendedButton()  &&  bview -> HasNonExtendedButton()) {
 		if (mExpandButtonRect.Intersects(rect)) {
-			const char *string = (bview -> IsExpanded()) ? "Less..." : "More...";
+			const char *string = (bview -> IsExpanded()) ? LOCALE("Less"B_UTF8_ELLIPSIS) : LOCALE("More"B_UTF8_ELLIPSIS);
 		
 			BFont font = be_plain_font;
 			font.SetSize(11);
@@ -1045,7 +1058,7 @@ FSDialogWindow::TFSContextDialogView::CustomBBox::MouseUp(BPoint point) {
 	rect.InsetBy(-rect.Width() * 0.25, -rect.Height() * 0.25);	// make it easier to push
 	
 	if (rect.Contains(point))
-		RadioButtonView() -> SwitchExpanded();
+		GetRadioButtonView() -> SwitchExpanded();
 }
 
 void
@@ -1234,7 +1247,7 @@ FSDialogWindow::TFSContextDialogView::SelectAnswer(TFSContext::command cmd) {
 }
 
 void
-FSDialogWindow::TFSContextDialogView:: AnswerSelectionChanged(TFSContext::command cmd) {
+FSDialogWindow::TFSContextDialogView::AnswerSelectionChanged(TFSContext::command cmd) {
 
 	FSDialogWindow *win = assert_cast<FSDialogWindow *>(Window());
 

@@ -123,7 +123,9 @@ private:
 	bool IsFloppyMounted();
 	bool FloppyInList();
 
+#if _INCLUDES_CLASS_DEVICE_MAP
 	DeviceList fList;
+#endif
 
 	// automounter settings
 	DeviceScanParams fScanParams;

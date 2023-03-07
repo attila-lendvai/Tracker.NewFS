@@ -45,6 +45,7 @@ All rights reserved.
 
 #include "Commands.h"
 #include "ContainerWindow.h"
+#include "LanguageTheme.h"
 #include "PoseView.h"
 #include "Utilities.h"
 
@@ -239,7 +240,7 @@ BTitleView::MouseDown(BPoint where)
 	if (buttons & B_SECONDARY_MOUSE_BUTTON) {
 		BContainerWindow *window = dynamic_cast<BContainerWindow *>
 			(Window());
-		BPopUpMenu *menu = new BPopUpMenu("Attributes", false, false);
+		BPopUpMenu *menu = new BPopUpMenu(LOCALE("Attributes"), false, false);
 		menu->SetFont(be_plain_font);
 		window->NewAttributeMenu(menu);
 		window->AddMimeTypesToMenu(menu);
@@ -408,11 +409,10 @@ BColumnTitle::Draw(BView *view, bool pressed)
 	
 	view->FillRect(bounds, B_SOLID_LOW);
 
-	BString titleString;
-	float resultingWidth;
-	TruncString(&titleString, fColumn->Title(), view,
-		bounds.Width() - kTitleColumnExtraMargin, B_TRUNCATE_END,
-		&resultingWidth);
+	BString titleString(fColumn->Title());
+	view->TruncateString(&titleString, B_TRUNCATE_END,
+		bounds.Width() - kTitleColumnExtraMargin);
+	float resultingWidth = view->StringWidth(titleString.String());
 
 	switch (fColumn->Alignment()) {
 		case B_ALIGN_LEFT:

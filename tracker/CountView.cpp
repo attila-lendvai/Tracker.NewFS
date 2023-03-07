@@ -41,6 +41,7 @@ All rights reserved.
 #include "CountView.h"
 #include "ContainerWindow.h"
 #include "DirMenu.h"
+#include "LanguageTheme.h"
 #include "PoseView.h"
 
 BCountView::BCountView(BRect bounds, BPoseView* view)
@@ -145,7 +146,7 @@ BCountView::CheckCount()
 	// invalidate the count text area if necessary
 	if (fLastCount != fPoseView->CountItems()) {
 		fLastCount = fPoseView->CountItems();
-		Invalidate(TextInvalRect());
+		Invalidate(/*TextInvalRect()*/Bounds());
 	}
 	// invalidate barber pole area if necessary
 	TrySpinningBarberPole();
@@ -162,33 +163,31 @@ BCountView::Draw(BRect)
 	BString itemString;
 	if (!IsTypingAhead()) {
 		if (fLastCount == 0) 
-			itemString << "no items";
+			itemString << LOCALE("no items");
 		else if (fLastCount == 1) 
-			itemString << "1 item";
+			itemString << LOCALE("1 item");
 		else 
-			itemString << fLastCount << " items";
+			itemString << fLastCount << " " << LOCALE("items");
 	} else
 		itemString << TypeAhead();
-		
 	
-	BString *string;
+	BString string(itemString);
 	BRect textRect(TextInvalRect());
 
 	if (fShowingBarberPole && !fStartSpinningAfter) {
 		barberPoleRect = BarberPoleOuterRect();
-		string = TruncString(this, itemString.String(), textRect.Width());
-	} else
-		string = new BString(itemString);
+		TruncateString(&string, B_TRUNCATE_END, textRect.Width());
+	}
 
 	if (IsTypingAhead())
 		// use a muted gray for the typeahead
 		SetHighColor(tint_color(ui_color(B_PANEL_BACKGROUND_COLOR), B_DARKEN_4_TINT));
 	else
 		SetHighColor(0, 0, 0);
+	
 	MovePenTo(textRect.LeftBottom());
-	DrawString(string->String());
-	delete string;
-
+	DrawString(string.String());
+	
 	bounds.top++;
 
 	BeginLineArray(fShowingBarberPole && !fStartSpinningAfter ? 8 : 4);

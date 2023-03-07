@@ -31,16 +31,21 @@ of Be Incorporated in the United States and other countries. Other brand product
 names are registered trademarks or trademarks of their respective holders.
 All rights reserved.
 */
-#include "Bitmaps.h"
 #include "Commands.h"
 #include "ContainerWindow.h"
-#include "TFSContext.h"
+#include "IconTheme.h"
 #include "Model.h"
 #include "Navigator.h"
+#include "PoseView.h"
+#include "TFSContext.h"
 #include "Tracker.h"
+#include "TrackerFilters.h"
+#include "TrackerSettings.h"
+#include "TrackerString.h"
+#include <TextControl.h>
 #include <Window.h>
 #include <Picture.h>
-#include <TextControl.h>
+#include <Alert.h>
 
 namespace BPrivate {
 
@@ -79,18 +84,24 @@ BNavigatorButton::~BNavigatorButton()
 void
 BNavigatorButton::AttachedToWindow()
 {
+	SetPictures();
+}
+
+void
+BNavigatorButton::SetPictures()
+{
 	BBitmap *bmpOn = 0;
-	GetTrackerResources()->GetBitmapResource(B_MESSAGE_TYPE, fResIDOn, &bmpOn);
+	GetIconTheme()->GetThemeIconForResID(fResIDOn, B_MINI_ICON, bmpOn);
 	SetPicture(bmpOn, true, true);
 	delete bmpOn;
 	
 	BBitmap *bmpOff = 0;
-	GetTrackerResources()->GetBitmapResource(B_MESSAGE_TYPE, fResIDOff, &bmpOff);
+	GetIconTheme()->GetThemeIconForResID(fResIDOff, B_MINI_ICON, bmpOff);
 	SetPicture(bmpOff, true, false);
 	delete bmpOff;
 
 	BBitmap *bmpDisabled = 0;
-	GetTrackerResources()->GetBitmapResource(B_MESSAGE_TYPE, fResIDDisabled, &bmpDisabled);
+	GetIconTheme()->GetThemeIconForResID(fResIDDisabled, B_MINI_ICON, bmpDisabled);
 	SetPicture(bmpDisabled, false, false);
 	SetPicture(bmpDisabled, false, true);
 	delete bmpDisabled;
@@ -99,35 +110,38 @@ BNavigatorButton::AttachedToWindow()
 void
 BNavigatorButton::SetPicture(BBitmap *bitmap, bool enabled, bool on)
 {
-	if (bitmap) {
-		BPicture picture;
-		BView view(bitmap->Bounds(), "", 0, 0);
-		AddChild(&view);
-		view.BeginPicture(&picture);
-		view.SetHighColor(kBgColor);
-		view.FillRect(view.Bounds());
-		view.SetDrawingMode(B_OP_OVER);
-		view.DrawBitmap(bitmap, BPoint(0, 0));
-		view.EndPicture();
-		RemoveChild(&view);
-		if (enabled)
-			if (on)
-				SetEnabledOn(&picture);
-			else
-				SetEnabledOff(&picture);
+	if (!bitmap)
+		return;
+	
+	BPicture picture;
+	BView view(bitmap->Bounds(), "", 0, 0);
+	AddChild(&view);
+	view.BeginPicture(&picture);
+	view.SetHighColor(kBgColor);
+	view.FillRect(view.Bounds());
+	view.SetDrawingMode(B_OP_ALPHA);
+	view.DrawBitmap(bitmap, BPoint(0, 0));
+	view.EndPicture();
+	RemoveChild(&view);
+	if (enabled) {
+		if (on)
+			SetEnabledOn(&picture);
 		else
-			if (on)
-				SetDisabledOn(&picture);
-			else
-				SetDisabledOff(&picture);
+			SetEnabledOff(&picture);
+	} else {
+		if (on)
+			SetDisabledOn(&picture);
+		else
+			SetDisabledOff(&picture);
 	}	
 }
 
 BNavigator::BNavigator(const Model *model, BRect rect, uint32 resizeMask)
 	:	BView(rect, "Navigator", resizeMask, B_WILL_DRAW),
-	fBack(0),
-	fForw(0),
-	fUp(0),
+	fBack(NULL),
+	fForw(NULL),
+	fUp(NULL),
+	fHome(NULL),
 	fBackHistory(8, true),
 	fForwHistory(8, true)
 {
@@ -156,17 +170,44 @@ BNavigator::BNavigator(const Model *model, BRect rect, uint32 resizeMask)
 		kResUpNavActive, kResUpNavInactive);
 	fUp->SetEnabled(false);
 	AddChild(fUp);
+	
+	int offset = 97;
 
-	fLocation = new BTextControl(BRect(97, 2, rect.Width() - 2, 21),
+	fHome = new BNavigatorButton(BRect(97, top, 117, top + 17), "Home",
+		new BMessage(kNavigatorCommandGoHome), kResHomeNavActiveSel,
+		kResHomeNavActive, kResHomeNavInactive);
+	fHome->SetEnabled(false);
+	if (!gTrackerSettings.ShowHomeButton())
+		fHome->Hide();
+	else
+		offset += 25;
+	AddChild(fHome);
+	
+	fLocation = new BTextControl(BRect(offset, 2, rect.Width() - 2, 21),
 		"Location", "", "", new BMessage(kNavigatorCommandLocation),
 		B_FOLLOW_LEFT_RIGHT);
 	fLocation->SetDivider(0);
+	fLocation->SetModificationMessage(new BMessage(kNavigatorCommandFilter));
 	AddChild(fLocation);
 	
+	fLocation->TextView()->AddFilter(new BMessageFilter(B_KEY_DOWN, &BNavigator::LocationBarFilter));
 }
 
 BNavigator::~BNavigator()
 {
+}
+
+void
+BNavigator::RefreshButtons()
+{
+	if (fBack)
+		fBack->SetPictures();
+	if (fForw)
+		fForw->SetPictures();
+	if (fUp)
+		fUp->SetPictures();
+	if (fHome)
+		fHome->SetPictures();
 }
 
 void 
@@ -179,6 +220,7 @@ BNavigator::AttachedToWindow()
 	fBack->SetTarget(this);
 	fForw->SetTarget(this);
 	fUp->SetTarget(this);
+	fHome->SetTarget(this);
 	fLocation->SetTarget(this);
 }
 
@@ -197,7 +239,7 @@ BNavigator::Draw(BRect)
 void 
 BNavigator::MessageReceived(BMessage *message)
 {
-	switch (message->what) {
+	switch (message->what) {		
 		case kNavigatorCommandBackward:
 			GoBackward((modifiers() & B_OPTION_KEY) == B_OPTION_KEY);
 			break;
@@ -213,59 +255,78 @@ BNavigator::MessageReceived(BMessage *message)
 		case kNavigatorCommandLocation:
 			GoTo();
 			break;
-				
-		default:
+			
+		case kNavigatorCommandGoHome:
+			fLocation->SetText(gTrackerSettings.HomeButtonDirectory());
+			GoTo();
+			break;
+		
+		case kNavigatorCommandFilter:
 			{
-				// Catch any dropped refs and try 
-				// to switch to this new directory
-				entry_ref ref;
-				if (message->FindRef("refs", &ref) == B_OK) {
-					BMessage message(kSwitchDirectory);
-					BEntry entry(&ref, true);
-					if (!entry.IsDirectory()) {
-						entry.GetRef(&ref);
-						BPath path(&ref);
-							path.GetParent(&path);
-							get_ref_for_path(path.Path(), &ref);
-					}
-					message.AddRef("refs", &ref);
-					message.AddInt32("action", kActionSet);
-					Window()->PostMessage(&message);
-				}
+				DoFiltering();
+				break;
 			}
+		
+		case kIconThemeChanged:
+			break;
+		
+		default: {
+			// Catch any dropped refs and try 
+			// to switch to this new directory
+			entry_ref ref;
+			if (message->FindRef("refs", &ref) == B_OK) {
+				BMessage message(kSwitchDirectory);
+				BEntry entry(&ref, true);
+				if (!entry.IsDirectory()) {
+					entry.GetRef(&ref);
+					BPath path(&ref);
+						path.GetParent(&path);
+						get_ref_for_path(path.Path(), &ref);
+				}
+				message.AddRef("refs", &ref);
+				message.AddInt32("action", kActionSet);
+				Window()->PostMessage(&message);
+			}
+		}
 	}
 }
 
 void 
 BNavigator::GoBackward(bool option)
 {
+	fSwitching = true;
 	int32 itemCount = fBackHistory.CountItems();
 	if (itemCount >= 2 && fBackHistory.ItemAt(itemCount - 2)) {
 		BEntry entry;
 		if (entry.SetTo(fBackHistory.ItemAt(itemCount - 2)->Path()) == B_OK)
 			SendNavigationMessage(kActionBackward, &entry, option);
 	}
+	fSwitching = false;
 }
 
 void 
 BNavigator::GoForward(bool option)
 {
+	fSwitching = true;
 	if (fForwHistory.CountItems() >= 1) {
 		BEntry entry;
 		if (entry.SetTo(fForwHistory.LastItem()->Path()) == B_OK)
 			SendNavigationMessage(kActionForward, &entry, option);
 	}
+	fSwitching = false;
 }
 
 void 
 BNavigator::GoUp(bool option)
 {
+	fSwitching = true;
 	BEntry entry;
 	if (entry.SetTo(fPath.Path()) == B_OK) {
 		BEntry parentEntry;
-		if (entry.GetParent(&parentEntry) == B_OK && !TFSContext::IsDesktopDir(parentEntry))
+		if (entry.GetParent(&parentEntry) == B_OK)
 			SendNavigationMessage(kActionUp, &parentEntry, option);
 	}
+	fSwitching = false;
 }
 
 void
@@ -305,7 +366,7 @@ BNavigator::SendNavigationMessage(NavigationAction action, BEntry *entry, bool o
 				//
 				// Todo: Change the locking behaviour of StandAloneTaskLoop::Run() and sub-
 				// sequently called functions.
-			if (nodeRef)
+			if (nodeRef && !Window()->PoseView()->IsFilePanel())
 				dynamic_cast<TTracker *>(be_app)->SelectChildInParentSoon(&ref, nodeRef);
 			LockLooper();
 		}
@@ -315,30 +376,34 @@ BNavigator::SendNavigationMessage(NavigationAction action, BEntry *entry, bool o
 void 
 BNavigator::GoTo()
 {
+	fSwitching = true;
 	BString pathname = fLocation->Text();
 
 	if (pathname.Compare("") == 0)
 		pathname = "/";
-
+	
 	BEntry entry;
 	entry_ref ref;
+	
+	if (!Window()) {
+		fSwitching = false;
+		return;
+	}
 
 	if (entry.SetTo(pathname.String()) == B_OK
-		&& !TFSContext::IsDesktopDir(entry)
+		&& entry.IsDirectory()
 		&& entry.GetRef(&ref) == B_OK) {
 		BMessage message(kSwitchDirectory);
 		message.AddRef("refs", &ref);
 		message.AddInt32("action", kActionLocation);
 		Window()->PostMessage(&message);		
-	} else {
-		BPath path;
-		
-		if (Window()
-			&& Window()->TargetModel()) {
-			Window()->TargetModel()->GetPath(&path);
-			fLocation->SetText(path.Path());
-		}
-	}
+	} else if (fLocation->TextView()->IsFocus() && Window()->PoseView()->CountItems()) {
+		Window()->PostMessage(new BMessage(kOpenSelectionOrFirst), Window()->PoseView());
+	} else
+		UpdateLocation(Window()->TargetModel(), kActionUpdatePath);
+	
+	Window()->PostMessage(new BMessage(kHideNoneMatchingEntries));
+	fSwitching = false;
 }
 
 void 
@@ -346,8 +411,7 @@ BNavigator::UpdateLocation(const Model *newmodel, int32 action)
 {
 	if (newmodel)
 		newmodel->GetPath(&fPath);
-
-
+	
 	// Modify history according to commands
 	switch (action) {
 		case kActionBackward:
@@ -362,25 +426,34 @@ BNavigator::UpdateLocation(const Model *newmodel, int32 action)
 			fForwHistory.MakeEmpty();
 			fBackHistory.AddItem(new BPath(fPath));
 
-			for (;fBackHistory.CountItems()>kMaxHistory;)
+			while (fBackHistory.CountItems() > kMaxHistory)
 				fBackHistory.RemoveItem(fBackHistory.FirstItem(), true);
 			break;			
 	}
-
+	
 	// Enable Up button when there is any parent
 	BEntry entry;
 	if (entry.SetTo(fPath.Path()) == B_OK) {
 		BEntry parentEntry;
-		fUp->SetEnabled(entry.GetParent(&parentEntry) == B_OK && !TFSContext::IsDesktopDir(parentEntry));
+		fUp->SetEnabled(entry.GetParent(&parentEntry) == B_OK);
 	}
-
+	
 	// Enable history buttons if history contains something
 	fForw->SetEnabled(fForwHistory.CountItems() > 0);
 	fBack->SetEnabled(fBackHistory.CountItems() > 1);
-
+	
+	// Enable home button if not in homedir
+	fHome->SetEnabled(strcmp(fPath.Path(), gTrackerSettings.HomeButtonDirectory()) != 0);
+	
 	// Avoid loss of selection and cursor position
-	if (action != kActionLocation)
-		fLocation->SetText(fPath.Path());
+	if (action != kActionLocation) {
+		BString expression;
+		Expression(expression);
+		BString buffer = BString("");
+		buffer << fPath.Path() << ((BString("/")).Compare(fPath.Path()) == 0 ? "" : "/") << (fSwitching ? expression : "");
+		fLocation->SetText(buffer.String());
+		fLocation->TextView()->Select(buffer.Length(), buffer.Length());
+	}
 }
 
 float
@@ -389,4 +462,96 @@ BNavigator::CalcNavigatorHeight(void)
 	// Empiric formula from how much space the textview
 	// will take once it is attached (using be_plain_font):
 	return  ceilf(11.0f + be_plain_font->Size()*(1.0f + 7.0f / 30.0f));
+}
+
+void 
+BNavigator::ShowHomeButton(bool enabled)
+{	
+	if (enabled && !this->IsHidden()) {
+		if (fHome->IsHidden()) {
+			fHome->Show();
+			fLocation->MoveTo(122, 2);
+			fLocation->ResizeBy(-25, 0);
+		}
+	}
+	else {
+		if (!fHome->IsHidden()) {
+			fHome->Hide();
+			fLocation->MoveTo(97, 2);
+			fLocation->ResizeBy(25, 0);
+		}
+	}
+}
+
+void
+BNavigator::ClearExpression()
+{
+	BString buffer = BString("");
+	buffer << fPath.Path() << ((BString("/")).Compare(fPath.Path()) == 0 ? "" : "/");
+	fLocation->SetText(buffer.String());
+	fLocation->TextView()->Select(buffer.Length(), buffer.Length());
+}	
+
+bool
+BNavigator::Expression(BString &result)
+{
+	BString location = BString(fLocation->Text());
+	int32 last = location.FindLast('/') + 1;
+	BString teststring = BString(fPath.Path());
+	if (teststring.Compare("/") != 0) // if we are in root we don't want a "//"
+		teststring.Append("/");
+
+	if (location.Compare(teststring, teststring.Length()) != 0)
+		return false;
+	else
+		location.CopyInto(result, last, location.Length() - last);
+
+	return true;
+}
+
+void
+BNavigator::DoFiltering()
+{
+	if (BString(fLocation->Text()).FindFirst(B_ESCAPE) >= 0) {
+		ClearExpression();
+		return;
+	}
+	
+	Window()->PostMessage(new BMessage(kHideNoneMatchingEntries));
+}
+
+filter_result
+BNavigator::LocationBarFilter(BMessage *message, BHandler **target, BMessageFilter *filter)
+{
+	BView *view = dynamic_cast<BView *>(*target);
+	
+	if (view) {
+		BContainerWindow *window = dynamic_cast<BContainerWindow *>(view->Window());
+		if (window) {
+			int32 raw;
+			message->FindInt32("raw_char", &raw);
+			if (raw == B_DOWN_ARROW || raw == B_UP_ARROW
+				|| raw == B_PAGE_UP || raw == B_PAGE_DOWN) {
+				int32 modifiers;
+				message->FindInt32("modifiers", &modifiers);
+				if ((modifiers & B_COMMAND_KEY) && !(modifiers & B_SHIFT_KEY) && !(modifiers & B_OPTION_KEY)) {
+					// let navigation messages pass
+					return B_DISPATCH_MESSAGE;
+				}
+				
+				char key = (uint8)raw;
+				window->PoseView()->KeyDown(&key, 1);
+				return B_SKIP_MESSAGE;
+			} else if (raw == B_TAB) {
+				BString expression;
+				if (window->Navigator()->Expression(expression) && expression.Length()) {
+					BMessage message(kNavigatorTabCompletion);
+					window->PoseView()->MessageReceived(&message);
+					return B_SKIP_MESSAGE;
+				}
+			}
+		}
+	}
+	
+	return B_DISPATCH_MESSAGE;
 }

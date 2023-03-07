@@ -32,6 +32,7 @@ names are registered trademarks or trademarks of their respective holders.
 All rights reserved.
 */
 
+#include "Defines.h"
 #include <PopUpMenu.h>
 #include <Window.h>
 

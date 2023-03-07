@@ -65,9 +65,12 @@ All rights reserved.
 #include "Bitmaps.h"
 #include "FindPanel.h"
 #include "FSUtils.h"
-#include "MimeTypes.h"
 #include "IconCache.h"
+#include "LanguageTheme.h"
+#include "MimeTypes.h"
+#include "TFSContext.h"
 #include "Tracker.h"
+#include "Undo.h"
 #include "Utilities.h"
 
 #ifdef CHECK_OPEN_MODEL_LEAKS
@@ -76,11 +79,15 @@ BObjectList<Model> *readOnlyOpenModelList = NULL;
 #endif
 
 namespace BPrivate {
-extern
-#if !B_BEOS_VERSION_DANO
-_IMPEXP_BE
-#endif
+#ifndef __HAIKU__
+extern _IMPEXP_BE
 bool CheckNodeIconHintPrivate(const BNode *, bool);
+#else
+bool CheckNodeIconHintPrivate(const BNode *, bool)
+{
+	return false;
+}
+#endif
 }
 
 Model::Model()
@@ -104,7 +111,6 @@ Model::Model(const Model &cloneThis)
 {
 	fStatBuf.st_dev = cloneThis.NodeRef()->device;
 	fStatBuf.st_ino = cloneThis.NodeRef()->node;
-	
 	if (cloneThis.IsSymLink() && cloneThis.LinkTo())
 		fLinkTo = new Model(*cloneThis.LinkTo());
 
@@ -115,6 +121,7 @@ Model::Model(const Model &cloneThis)
 		ASSERT(fStatBuf.st_dev == cloneThis.NodeRef()->device);
 		ASSERT(fStatBuf.st_ino == cloneThis.NodeRef()->node);
 	}
+	
 	if (!cloneThis.IsNodeOpen())
 		CloseNode();
 }
@@ -180,7 +187,7 @@ Model::~Model()
 	if (IconCache::NeedsDeletionNotification((IconSource)fIconFrom))
 		// this check allows us to use temporary Model in the IconCache
 		// without the danger of a deadlock
-		IconCache::iconCache->Deleting(this);
+		IconCache::sIconCache->Deleting(this);
 #if xDEBUG
 	if (fNode)
 		PRINT(("destructor closing node for %s\n", Name()));
@@ -189,7 +196,7 @@ Model::~Model()
 	delete fNode;
 }
 
-status_t 
+status_t
 Model::SetTo(const BEntry *entry, bool open, bool writable)
 {
 	delete fNode;
@@ -314,7 +321,7 @@ Model::Name() const
 {
 	switch (fBaseType) {
 		case kRootNode:
-			return "Disks";
+			return LOCALE("Disks");
 		case kVolumeNode:
 			if (fVolumeName)
 				return fVolumeName;
@@ -406,6 +413,10 @@ Model::OpenNodeCommon(bool writable)
 			// ToDo: Obviously, we can also be here if the type could not be determined,
 			// for example for block devices (so the TRESPASS() macro shouldn't be
 			// used here)!
+			
+			// we should at least set fStatus, as OpenNode will use it instead
+			// of what we return. This avoids being in a endless uninit state.
+			fStatus = B_ERROR;
 			return B_ERROR;
 	}
 	
@@ -513,16 +524,17 @@ Model::FinishSettingUpType()
 	// disk again for models that do not have an icon defined by the node
 	if (IsNodeOpen()
 		&& fBaseType != kLinkNode
-		&& !CheckNodeIconHintPrivate(fNode, dynamic_cast<TTracker *>(be_app) == NULL))
+		&& !CheckNodeIconHintPrivate(fNode, dynamic_cast<TTracker *>(be_app) == NULL)) {
 			// when checking for the node icon hint, if we are libtracker, only check
 			// for small icons - checking for the large icons is a little more
 			// work for the filesystem and this will speed up the test.
 			// This makes node icons only work if there is a small and a large node
 			// icon on a file - for libtracker that is not a problem though
-		
 		fIconFrom = kUnknownNotFromNode;
+	}
 	
 	if (fBaseType != kDirectoryNode
+		&& fBaseType != kVolumeNode
 		&& fBaseType != kLinkNode
 		&& IsNodeOpen()) {
 		BNodeInfo info(fNode);
@@ -545,8 +557,9 @@ Model::FinishSettingUpType()
 			}
 		}
 	}
-
+	
 	switch (fBaseType) {
+		case kVolumeNode:
 		case kDirectoryNode:
 			if (NodeRef()->node == fEntryRef.directory
 				&& NodeRef()->device == fEntryRef.device) {
@@ -558,7 +571,6 @@ Model::FinishSettingUpType()
 
 			fMimeType = B_DIR_MIMETYPE;	// should use a shared string here
 			if (IsNodeOpen()) {
-			
 				BNodeInfo info(fNode);
 				if (info.GetType(mimeString) == B_OK)
 					fMimeType = mimeString;
@@ -567,33 +579,32 @@ Model::FinishSettingUpType()
 					&& WellKnowEntryList::Match(NodeRef()) > (directory_which)-1)
 					// one of home, beos, system, boot, etc.
 					fIconFrom = kTrackerSupplied;
+				
+				if (TFSContext::IsTrashDir(NodeRef())
+					|| TFSContext::IsDesktopDir(NodeRef()))
+					fIconFrom = kTrackerSupplied;
+				
+				if (!dynamic_cast<BDirectory *>(fNode)->IsRootDirectory())
+					break;
 
-				if (dynamic_cast<BDirectory *>(fNode)->IsRootDirectory()) {
-					// promote from directory to volume
-					fBaseType = kVolumeNode;
+				fBaseType = kVolumeNode;
 
-					// volumes have to have a B_VOLUME_MIMETYPE type
-					fMimeType = B_VOLUME_MIMETYPE;
-					if (fIconFrom == kUnknownNotFromNode)
-						fIconFrom = kVolume;
-	
-					char name[B_FILE_NAME_LENGTH];
-					BVolume	volume(NodeRef()->device);
-					if (volume.InitCheck() == B_OK && volume.GetName(name) == B_OK) {
-						if (fVolumeName)
-							DeletePreferredAppVolumeNameLinkTo();
-	
-						fVolumeName = strdup(name);
-					}
-#if DEBUG
-					else
-						PRINT(("get volume name failed for %s\n", fEntryRef.name));
-#endif
-				} 
-					
+				// volumes have to have a B_VOLUME_MIMETYPE type
+				fMimeType = B_VOLUME_MIMETYPE;
+				if (fIconFrom == kUnknownNotFromNode)
+					fIconFrom = kVolume;
+
+				char name[B_FILE_NAME_LENGTH];
+				BVolume	volume(NodeRef()->device);
+				if (volume.InitCheck() == B_OK && volume.GetName(name) == B_OK) {
+					if (fVolumeName)
+						DeletePreferredAppVolumeNameLinkTo();
+		
+					fVolumeName = strdup(name);
+				}
 			}
 			break;
-			
+
 		case kLinkNode:
 			fMimeType = B_LINK_MIMETYPE;	// should use a shared string here
 			break;
@@ -629,11 +640,19 @@ Model::ResetIconFrom()
 
 	if (InitCheck() != B_OK)
 		return;
-
+	
+	// force trackersupplied for dynamic trash icon
+	if (TFSContext::IsTrashDir(NodeRef())) {
+		fIconFrom = kTrackerSupplied;
+		return;
+	}
+	
 	// mirror the logic from FinishSettingUpType
-	if (fBaseType == kDirectoryNode
+	if ((fBaseType == kDirectoryNode
+		|| fBaseType == kVolumeNode)
 		&& !CheckNodeIconHintPrivate(fNode, dynamic_cast<TTracker *>(be_app) == NULL)) {
-		if (WellKnowEntryList::Match(NodeRef()) > (directory_which)-1) {
+		if (WellKnowEntryList::Match(NodeRef()) > (directory_which)-1
+			|| TFSContext::IsDesktopDir(NodeRef())) {
 			fIconFrom = kTrackerSupplied;
 			return;
 		} else if (dynamic_cast<BDirectory *>(fNode)->IsRootDirectory()) {
@@ -641,6 +660,7 @@ Model::ResetIconFrom()
 			return;
 		}
 	}
+	
 	fIconFrom = kUnknownSource;
 }
 
@@ -817,7 +837,8 @@ Model::StatChanged()
 	if (oldMode != fStatBuf.st_mode) {
 		bool forWriting = IsNodeOpenForWriting();
 		CloseNode();
-		SetupBaseType();
+		//SetupBaseType();
+			// the node type can't change with a stat update...
 		OpenNodeCommon(forWriting);
 		return true;
 	}
@@ -1086,8 +1107,26 @@ Model::WriteAttr(const char *attr, type_code type, off_t offset,
 	BModelWriteOpener opener(this);
 	if (!fNode) 
 		return 0;
+	
+	if (gTrackerSettings.UndoEnabled()) {
+		uint8 undo_buffer[B_FILE_NAME_LENGTH * 10];
+		struct attr_info info;
+		fNode->GetAttrInfo(attr, &info);
+		type_code old_type = info.type;
+		ssize_t old_size = fNode->ReadAttr(attr, old_type, offset, undo_buffer,
+										B_FILE_NAME_LENGTH * 10);
+		
+		BMessage *undo = new BMessage(kEditItem);
+		undo->AddRef("new_ref", EntryRef());
+		undo->AddString("attr", attr);
+		undo->AddInt32("offset", offset);
+		undo->AddInt32("old_type", old_type);
+		undo->AddData("old_data", old_type, undo_buffer, old_size);
+		gUndoHistory.AddItem(undo);
+	}
 
 	ssize_t result = fNode->WriteAttr(attr, type, offset, buffer, length);
+	
 	return result;
 }
 
@@ -1324,8 +1363,8 @@ Model::TrackIconSource(icon_size size)
 					if (err == B_OK) {
 #if DEBUG
 						PRINT(("track icon - got icon for type %s from preferred app %s for file\n",
-#endif
 							MimeType(), preferredApp));
+#endif
 						return;
 					}
 				}
@@ -1336,8 +1375,8 @@ Model::TrackIconSource(icon_size size)
 					// the system knew what icon to use for the type, we are done
 #if DEBUG
 					PRINT(("track icon - signature %s, got icon from system\n",
-#endif
 						MimeType()));
+#endif
 					return;
 				}
 				
@@ -1346,8 +1385,8 @@ Model::TrackIconSource(icon_size size)
 					// no preferred App for document, give up
 #if DEBUG
 					PRINT(("track icon - signature %s, no prefered app, error %s\n",
-#endif
 						MimeType(), strerror(err)));
+#endif
 					return;
 				}
 			
@@ -1357,14 +1396,14 @@ Model::TrackIconSource(icon_size size)
 					// the preferred app knew icon to use for the type, we are done
 #if DEBUG
 					PRINT(("track icon - signature %s, got icon from preferred app %s\n",
-#endif
 						MimeType(), preferredApp));
+#endif
 					return;
 				}
 #if DEBUG
 				PRINT(("track icon - signature %s, preferred app %s, no icon, error %s\n",
-#endif
 					MimeType(), preferredApp, strerror(err)));
+#endif
 			}
 			break;
 	}

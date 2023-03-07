@@ -45,6 +45,7 @@ All rights reserved.
 #include "EntryIterator.h"
 #include "FavoritesMenu.h"
 #include "IconMenuItem.h"
+#include "LanguageTheme.h"
 #include "NavMenu.h"
 #include "PoseView.h"
 #include "QueryPoseView.h"
@@ -150,7 +151,7 @@ FavoritesMenu::AddNextItem()
 
 			if (!fAddedSeparatorForSection) {
 				fAddedSeparatorForSection = true;
-				AddItem(new TitledSeparatorItem("Favorite Folders"));
+				AddItem(new TitledSeparatorItem(LOCALE("Favorite Folders")));
 			}
 			fUniqueRefCheck.push_back(*model.EntryRef());
 			AddItem(item);
@@ -168,7 +169,7 @@ FavoritesMenu::AddNextItem()
 		fItems.MakeEmpty();
 
 		int32 apps, docs, folders;
-		TrackerSettings().RecentCounts(&apps, &docs, &folders);
+		gTrackerSettings.RecentCounts(&apps, &docs, &folders);
 
 		BRoster().GetRecentDocuments(&fItems, docs, NULL, info.signature);
 		fIndex = 0;
@@ -191,7 +192,7 @@ FavoritesMenu::AddNextItem()
 				if (item) {
 					if (!fAddedSeparatorForSection) {
 						fAddedSeparatorForSection = true;
-						AddItem(new TitledSeparatorItem("Recent Documents"));
+						AddItem(new TitledSeparatorItem(LOCALE("Recent Documents")));
 					}
 					AddItem(item);
 					fSectionItemCount++;
@@ -210,7 +211,7 @@ FavoritesMenu::AddNextItem()
 		fItems.MakeEmpty();
 
 		int32 apps, docs, folders;
-		TrackerSettings().RecentCounts(&apps, &docs, &folders);
+		gTrackerSettings.RecentCounts(&apps, &docs, &folders);
 
 		BRoster().GetRecentFolders(&fItems, folders, info.signature);
 		fIndex = 0;
@@ -236,7 +237,7 @@ FavoritesMenu::AddNextItem()
 			if (item) {
 				if (!fAddedSeparatorForSection) {
 					fAddedSeparatorForSection = true;
-					AddItem(new TitledSeparatorItem("Recent Folders"));
+					AddItem(new TitledSeparatorItem(LOCALE("Recent Folders")));
 				}
 				AddItem(item);
 				item->SetEnabled(true);
@@ -275,7 +276,7 @@ RecentsMenu::RecentsMenu(const char *name,int32 which,uint32 what,BHandler *targ
 	int32 applications;
 	int32 documents;
 	int32 folders;
-	TrackerSettings().RecentCounts(&applications,&documents,&folders);
+	gTrackerSettings.RecentCounts(&applications,&documents,&folders);
 
 	if (fWhich == 0)
 		fRecentsCount = documents;
@@ -317,7 +318,7 @@ RecentsMenu::StartBuildingItemList()
 	return true;
 }
 
-bool 
+bool
 RecentsMenu::AddNextItem()
 {
 	if (fRecentsCount > 0 && AddRecents(fRecentsCount))
@@ -387,7 +388,7 @@ RecentsMenu::DoneBuildingItemList()
 	//
 
 	if (CountItems() <= 0) {
-		BMenuItem *item = new BMenuItem("<No Recent Items>", 0);
+		BMenuItem *item = new BMenuItem(LOCALE("<No Recent Items>"), 0);
 		item->SetEnabled(false);
 		AddItem(item);
 	} else

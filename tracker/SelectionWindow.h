@@ -42,6 +42,7 @@ All rights reserved.
 #include <TextControl.h>
 #include <Window.h>
 
+#include "SettingsViews.h"
 #include "TrackerString.h"
 
 namespace BPrivate {
@@ -50,7 +51,7 @@ class BContainerWindow;
 
 class SelectionWindow : public BWindow {
 public:
-	SelectionWindow(BContainerWindow *);
+	SelectionWindow(BContainerWindow *window, SettingsView *settingsview = NULL, const char* title = LOCALE("Select"));
 
 	void MessageReceived(BMessage *);
 	bool QuitRequested();
@@ -64,6 +65,7 @@ public:
 	
 private:
 	BContainerWindow *fParentWindow;
+	SettingsView *fSettingsView;
 
 	BMenuField *fMatchingTypeMenuField;
 	BTextControl *fExpressionTextControl;

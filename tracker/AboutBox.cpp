@@ -38,6 +38,7 @@ All rights reserved.
 
 #if __POWERPC__
 
+#include "Defines.h"
 #include <Window.h>
 #include <View.h>
 

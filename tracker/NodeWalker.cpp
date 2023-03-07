@@ -32,6 +32,7 @@ names are registered trademarks or trademarks of their respective holders.
 All rights reserved.
 */
 
+#include "Defines.h"
 #include <Debug.h>
 #include <stdio.h>
 #include <string.h>

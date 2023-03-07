@@ -45,6 +45,7 @@ All rights reserved.
 #include "Commands.h"
 #include "FindPanel.h"
 #include "FSUtils.h"
+#include "LanguageTheme.h"
 #include "MimeTypeList.h"
 #include "MimeTypes.h"
 #include "QueryPoseView.h"
@@ -73,6 +74,23 @@ BQueryPoseView::~BQueryPoseView()
 	delete fQueryListContainer;
 }
 
+void
+BQueryPoseView::MessageReceived(BMessage *message)
+{
+	switch(message->what) {
+		case kFSClipboardChanges:
+		{
+			// poses have always to be updated for the query view
+			UpdatePosesClipboardModeFromClipboard(message);
+			break;
+		}
+		
+		default:
+			_inherited::MessageReceived(message);
+			break;
+	}
+}
+
 void 
 BQueryPoseView::EditQueries()
 {
@@ -88,13 +106,13 @@ BQueryPoseView::SetUpDefaultColumnsIfNeeded()
 	if (fColumnList->CountItems() != 0)
 		return;
 
-	fColumnList->AddItem(new BColumn("Name", kColumnStart, 145, B_ALIGN_LEFT,
+	fColumnList->AddItem(new BColumn(LOCALE("Name"), kColumnStart, 145, B_ALIGN_LEFT,
 		kAttrStatName, B_STRING_TYPE, true, true));
-	fColumnList->AddItem(new BColumn("Path", 200, 225, B_ALIGN_LEFT,
+	fColumnList->AddItem(new BColumn(LOCALE("Path"), 200, 225, B_ALIGN_LEFT,
 		kAttrPath, B_STRING_TYPE, true, false));
-	fColumnList->AddItem(new BColumn("Size", 440, 80, B_ALIGN_RIGHT,
+	fColumnList->AddItem(new BColumn(LOCALE("Size"), 440, 80, B_ALIGN_RIGHT,
 		kAttrStatSize, B_OFF_T_TYPE, true, false));
-	fColumnList->AddItem(new BColumn("Modified", 535, 150, B_ALIGN_LEFT,
+	fColumnList->AddItem(new BColumn(LOCALE("Modified"), 535, 150, B_ALIGN_LEFT,
 		kAttrStatModified, B_TIME_TYPE, true, false));
 }
 
@@ -324,15 +342,14 @@ BQueryPoseView::SearchForType() const
 			TTracker *tracker = dynamic_cast<TTracker *>(be_app);
 			if (tracker) {
 				const ShortMimeInfo *info = tracker->MimeTypes()->FindMimeType(buffer.String());
-				if (info) 
+				if (info)
 					fSearchForMimeType = info->InternalName();
-				
+			
 			}
 		}
 		if (!fSearchForMimeType.Length())
 			fSearchForMimeType = B_FILE_MIMETYPE;
 	}
-
 	return fSearchForMimeType.String();
 }
 
@@ -414,19 +431,21 @@ QueryEntryListCollection::QueryEntryListCollection(Model *model, BHandler *targe
 
 	// get volumes to perform query on
 	if (model->Node()->GetAttrInfo(kAttrQueryVolume, &info) == B_OK) {
-		BString buffer;
-		if (model->Node()->ReadAttr(kAttrQueryVolume, B_MESSAGE_TYPE, 0,
-			buffer.LockBuffer((int32)info.size), (size_t)info.size) == info.size) {
-			buffer.UnlockBuffer();
+		char *buffer = NULL;
+
+		if ((buffer = (char *)malloc(info.size)) != NULL
+			&& model->Node()->ReadAttr(kAttrQueryVolume, B_MESSAGE_TYPE, 0, buffer,
+			(size_t)info.size) == info.size) {
+	
 			BMessage message;
-			if (message.Unflatten(buffer.String()) == B_OK) {
+			if (message.Unflatten(buffer) == B_OK) {
 				for (int32 index = 0; ;index++) {
 					ASSERT(index < 100);
 					BVolume volume;
 						// match a volume with the info embedded in the message
 					result = MatchArchivedVolume(&volume, &message, index);
 					if (result == B_OK) {
-						// send the querry off on this volume
+						// start the query on this volume
 						result = FetchOneQuery(&query, target,
 							fQueryListRep->fQueryList, &volume); 
 						if (result != B_OK)
@@ -441,6 +460,7 @@ QueryEntryListCollection::QueryEntryListCollection(Model *model, BHandler *targe
 				}
 			}
 		}
+		free(buffer);
 	}
 
 	if (searchAllVolumes) {
@@ -513,6 +533,7 @@ QueryEntryListCollection::ClearOldPoseList()
 	delete fQueryListRep->fOldPoseList;
 	fQueryListRep->fOldPoseList = NULL;
 }
+
 
 status_t 
 QueryEntryListCollection::GetNextEntry(BEntry *entry, bool traverse)

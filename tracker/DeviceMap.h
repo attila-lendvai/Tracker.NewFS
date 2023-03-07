@@ -59,6 +59,12 @@ All rights reserved.
 #ifndef __DEVICE_MAP__
 #define __DEVICE_MAP__
 
+#if _INCLUDES_CLASS_DEVICE_MAP
+#define _DEVICE_MAP_ONLY(x) x
+#else
+#define _DEVICE_MAP_ONLY(x) 
+#endif
+
 #include "DeviceMapGlue.h"
 
 #include <Drivers.h>
@@ -66,7 +72,7 @@ All rights reserved.
 #include <Node.h>
 #include <OS.h>
 
-class Bitmap;
+class BBitmap;
 
 enum {
 	P_UNKNOWN = 0, 

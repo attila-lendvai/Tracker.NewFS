@@ -35,11 +35,10 @@ All rights reserved.
 #ifndef	_FIND_PANEL_H
 #define _FIND_PANEL_H
 
-
+#include "Defines.h"
 #include <ByteOrder.h>
 #include <Window.h>
 #include <View.h>
-
 
 #include "DialogPane.h"
 #include "ObjectList.h"
@@ -70,10 +69,7 @@ const uint32 kByForumlaItem = 'Fbyq';
 const uint32 kAddItem = 'Fadd';
 const uint32 kRemoveItem = 'Frem';
 
-#if !B_BEOS_VERSION_DANO
-_IMPEXP_TRACKER
-#endif
-BMenu *TrackerBuildRecentFindItemsMenu(const char *);
+_IMPEXP_TRACKER BMenu *TrackerBuildRecentFindItemsMenu(const char *);
 
 struct MoreOptionsStruct {
 	bool showMoreOptions;

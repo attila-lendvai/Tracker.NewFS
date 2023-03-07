@@ -467,7 +467,7 @@ bool
 BPoseView::CountProperty(BMessage *, int32, const char *property, BMessage *reply)
 {
 	bool handled = false;
-//	PRINT(("BPoseView::CountProperty, %s\n", property));
+	PRINT(("BPoseView::CountProperty, %s\n", property));
 
 	// just return the respecitve counts
 	if (strcmp(property, kPropertySelection) == 0) {
@@ -484,7 +484,7 @@ bool
 BPoseView::GetProperty(BMessage *specifier, int32 form, const char *property,
 	BMessage *reply)
 {
-//	PRINT(("GetProperty %s\n", property));
+	PRINT(("GetProperty %s\n", property));
 	bool handled = false;
 	status_t error = B_OK;
 
@@ -620,7 +620,7 @@ BPoseView::SetProperty(BMessage *message, BMessage *, int32 form,
 						&& message->FindInt32("data", 1, &selEnd) == B_OK) {
 
 						if (selStart < 0 || selStart >= fPoseList->CountItems()
-							|| selEnd < 0 || selStart >= fPoseList->CountItems()) {
+							|| selEnd < 0 || selEnd >= fPoseList->CountItems()) {
 							error = B_BAD_INDEX;
 							handled = true;
 							break;
@@ -635,7 +635,7 @@ BPoseView::SetProperty(BMessage *message, BMessage *, int32 form,
 			case kPreviousSpecifier:
 			case kNextSpecifier:
 				{
-					// PRINT(("SetProperty direct/previous/next %s\n", property));
+					PRINT(("SetProperty direct/previous/next %s\n", property));
 					// select/unselect poses specified by entries
 					bool clearSelection = true;
 					for (int32 index = 0; message->FindRef("data", index, &ref)
@@ -679,7 +679,7 @@ BPoseView::ResolveSpecifier(BMessage *message, int32 index,
 
 	int32 result = propertyInfo.FindMatch(message, index, specifier, form, property);
 	if (result < 0) {
-// 		PRINT(("FindMatch result %d \n"));
+ 		PRINT(("FindMatch result %d \n"));
 		return _inherited::ResolveSpecifier(message, index, specifier,
 			form, property);
 	}

@@ -35,6 +35,7 @@ All rights reserved.
 #ifndef _COMMANDS_H
 #define _COMMANDS_H
 
+#include "Defines.h"
 #include "PublicCommands.h"
 
 namespace BPrivate {
@@ -42,12 +43,15 @@ namespace BPrivate {
 // external app messages
 
 const uint32 kGetInfo = 'Tinf';
+const uint32 kCloseInfo = 'Tcin';
+const uint32 kShowMultiple = 'Tsmi';
 const uint32 kMoveToTrash = 'Ttrs';
 const uint32 kDelete = 'Tdel';
 const uint32 kRestoreFromTrash = 'Tres';
 const uint32 kIdentifyEntry = 'Tidt';
 const uint32 kOpenSelection = 'Tosl';
 const uint32 kOpenSelectionWith = 'Tosu';
+const uint32 kOpenSelectionOrFirst = 'Toso';
 const uint32 kCloseAllWindows = 'Tall';
 const uint32 kCloseWindowAndChildren = 'Tcwc';
 
@@ -84,6 +88,7 @@ const uint32 kCleanup = 'Tcln';
 const uint32 kCleanupAll = 'Tcla';
 const uint32 kResizeToFit = 'Trtf';
 const uint32 kSelectMatchingEntries = 'Tsme';
+const uint32 kHideNoneMatchingEntries = 'Thne';
 const uint32 kShowSelectionWindow = 'Tssw';
 const uint32 kShowSettingsWindow = 'Tstw';
 const uint32 kInvertSelection = 'Tisl';
@@ -104,6 +109,12 @@ const uint32 kSwitchToHome = 'Tswh';
 
 const uint32 kTestIconCache = 'TicC';
 
+const uint32 kRefresh = 'Resh';
+
+const uint32 kUndoAction = 'Uuac';
+const uint32 kRedoAction = 'Urac';
+const uint32 kNavigatorTabCompletion = 'Natc';
+
 // Observers and Notifiers:
 
 // Settings-changed messages:
@@ -111,13 +122,14 @@ const uint32 kDisksIconChanged = 'Dicn';
 const uint32 kDesktopIntegrationChanged = 'Dint';
 const uint32 kShowDisksIconChanged = 'Sdic';
 const uint32 kVolumesOnDesktopChanged = 'Codc';
+const uint32 kEjectWhenUnmountingChanged = 'Ewum';
 
 const uint32 kWindowsShowFullPathChanged = 'Wsfp';
 const uint32 kSingleWindowBrowseChanged = 'Osmw';
 const uint32 kShowNavigatorChanged = 'Snvc';
+const uint32 kShowHomeButtonChanged = 'Shbc';
+const uint32 kHomeButtonDirectoryChanged = 'Hbdc';
 const uint32 kShowSelectionWhenInactiveChanged = 'Sswi';
-const uint32 kTransparentSelectionChanged = 'Trse';
-const uint32 kTransparentSelectionColorChanged = 'Tscc';
 const uint32 kSortFolderNamesFirstChanged = 'Sfnf';
 
 const uint32 kDesktopFilePanelRootChanged = 'Dfpr';
@@ -132,6 +144,33 @@ const uint32 kSpaceBarColorChanged = 'SBcc';
 
 const uint32 kDontMoveFilesToTrashChanged = 'STdm';
 const uint32 kAskBeforeDeleteFileChanged = 'STad';
+
+const uint32 kTransparentSelectionChanged = 'Trse';
+const uint32 kTransparentSelectionColorChanged = 'Tscc';
+
+const uint32 kDynamicFilteringChanged = 'Dfic';
+const uint32 kDynamicFilteringExpressionTypeChanged = 'Detc';
+const uint32 kDynamicFilteringInvertChanged = 'Dinc';
+const uint32 kDynamicFilteringIgnoreCaseChanged = 'Dicc';
+
+const uint32 kStaticFilteringChanged = 'Sfic';
+const uint32 kStaticFilterAdded = 'Sfad';
+const uint32 kStaticFilterRemoved = 'Sfrm';
+
+const uint32 kUndoEnabledChanged = 'Uenc';
+const uint32 kUndoDepthChanged = 'Udec';
+
+const uint32 kIconThemeChanged = 'Ithc';
+const uint32 kIconThemeEnabledChanged = 'Itec';
+const uint32 kCurrentIconThemeChanged = 'Citc';
+const uint32 kApplyIconTheme = 'Apit';
+
+const uint32 kShowSequenceOptions = 'Ssqo';
+const uint32 kSequenceMovedUp = 'Squp';
+const uint32 kSequenceMovedDown = 'Sqdn';
+
+const uint32 kLanguageThemeChanged = 'Lthc';
+const uint32 kApplyLanguageTheme = 'Aplt';
 
 } // namespace BPrivate
 

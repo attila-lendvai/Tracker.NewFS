@@ -35,17 +35,16 @@ All rights reserved.
 #ifndef _TRACKER_PRIVATE_H
 #define _TRACKER_PRIVATE_H
 
+#include "Defines.h"
 #include <BeBuild.h>
 
 #define kTrackerSignature "application/x-vnd.Be-TRAK"
 #define kTrackerSuites "suite/x-vnd.Be-TRAK"
+#define kDeskbarSignature "application/x-vnd.Be-TSKB"
 
 namespace BPrivate {
 
-#if !B_BEOS_VERSION_DANO
-_IMPEXP_TRACKER
-#endif
-void InitIconPreloader();
+_IMPEXP_TRACKER void InitIconPreloader();
 
 }
 

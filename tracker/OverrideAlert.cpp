@@ -34,6 +34,8 @@ All rights reserved.
 
 // defines the status area drawn in the bottom left corner of a Tracker window
 
+#include "Defines.h"
+
 #include <Button.h>
 #include <Screen.h>
 

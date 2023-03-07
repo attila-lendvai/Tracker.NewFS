@@ -114,10 +114,8 @@ NodePreloader::MessageReceived(BMessage *message)
 						Model *model = FindModel(itemNode);
 						if (!model)
 							break;
-#if DEBUG
 						PRINT(("preloader removing file %s\n", model->Name()));
-#endif
-						IconCache::iconCache->Removing(model);
+						IconCache::sIconCache->Removing(model);
 						fModelList.RemoveItem(model);
 						break;
 					}
@@ -135,10 +133,8 @@ NodePreloader::MessageReceived(BMessage *message)
 						if (!model)
 							break;
 						BModelOpener opener(model);
-						IconCache::iconCache->IconChanged(model->ResolveIfLink());
-#if DEBUG
+						IconCache::sIconCache->IconChanged(model->ResolveIfLink());
 						PRINT(("preloader updating file %s\n", model->Name()));
-#endif
 						break;
 					}
 			}
@@ -153,9 +149,7 @@ NodePreloader::MessageReceived(BMessage *message)
 void 
 NodePreloader::PreloadOne(const char *dirPath)
 {
-#if DEBUG
 	PRINT(("preloading directory %s\n", dirPath));
-#endif
 	BDirectory dir(dirPath);
 	if (!dir.InitCheck() == B_OK)
 		return;
@@ -181,7 +175,7 @@ NodePreloader::PreloadOne(const char *dirPath)
 		if (model->InitCheck() == B_OK && model->IconFrom() == kUnknownSource) {
 			TTracker::WatchNode(model->NodeRef(), B_WATCH_STAT
 				| B_WATCH_ATTR, this);
-			IconCache::iconCache->Preload(model, kNormalIcon, B_MINI_ICON, true);
+			IconCache::sIconCache->Preload(model, kNormalIcon, B_MINI_ICON, true);
 			fModelList.AddItem(model);
 			model->CloseNode();
 		} else

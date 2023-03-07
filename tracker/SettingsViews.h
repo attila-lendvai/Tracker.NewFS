@@ -35,10 +35,12 @@ All rights reserved.
 #ifndef _SETTINGS_VIEWS
 #define _SETTINGS_VIEWS
 
+#include <Button.h>
 #include <CheckBox.h>
 #include <RadioButton.h>
 #include <TextControl.h>
 #include <ColorControl.h>
+#include <StringView.h>
 
 #include "Commands.h"
 #include "TrackerSettings.h"
@@ -47,7 +49,8 @@ const uint32 kSettingsContentsModified = 'Scmo';
 
 class BMenuField;
 class BStringView;
-
+class ThemePreView;
+class BLinkStringView;
 
 namespace BPrivate {
 
@@ -82,14 +85,14 @@ private:
 	BRadioButton *fShowDisksIconRadioButton;
 	BRadioButton *fMountVolumesOntoDesktopRadioButton;
 	BCheckBox *fMountSharedVolumesOntoDesktopCheckBox;
-
+	BCheckBox *fEjectWhenUnmountingCheckBox;
 	BCheckBox *fIntegrateNonBootBeOSDesktopsCheckBox;
 
 	bool fShowDisksIcon;
 	bool fMountVolumesOntoDesktop;
 	bool fMountSharedVolumesOntoDesktop;
-
 	bool fIntegrateNonBootBeOSDesktops;
+	bool fEjectWhenUnmounting;
 	
 	typedef SettingsView _inherited;
 };
@@ -110,12 +113,16 @@ private:
 	BCheckBox *fShowFullPathInTitleBarCheckBox;
 	BCheckBox *fSingleWindowBrowseCheckBox;
 	BCheckBox *fShowNavigatorCheckBox;
+	BCheckBox *fShowHomeButtonCheckBox;
+	BTextControl *fHomeButtonDirectoryTextControl;
 	BCheckBox *fShowSelectionWhenInactiveCheckBox;
 	BCheckBox *fSortFolderNamesFirstCheckBox;
 
 	bool fShowFullPathInTitleBar;
 	bool fSingleWindowBrowse;
 	bool fShowNavigator;
+	bool fShowHomeButton;
+	char* fHomeButtonDirectory;
 	bool fShowSelectionWhenInactive;
 	bool fSortFolderNamesFirst;
 	
@@ -262,16 +269,155 @@ public:
 private:
 	BCheckBox 		*fTransparentSelectionCheckBox;
 
-	BTextControl 	*fTransparentSelectionAlphaTextControl;
 	BColorControl	*fColorControl;
+	BTextControl 	*fTransparentSelectionAlphaTextControl;
 
-	int32 			fTransparentSelectionAlpha;
-
-	bool			fSpaceBarShow;
 	bool 			fTransparentSelection;
 	rgb_color		fTransparentSelectionColor;
+	int32 			fTransparentSelectionAlpha;
 
 	typedef SettingsView _inherited;
+};
+
+class FilteringSettingsView : public SettingsView {
+public:
+	FilteringSettingsView(BRect);
+	~FilteringSettingsView();
+
+	void MessageReceived(BMessage *);
+
+	void AttachedToWindow();
+	
+	void SetDefaults();
+	void Revert();
+	void ShowCurrentSettings(bool sendNotices = false);
+	void RecordRevertSettings();
+	bool ShowsRevertSettings() const;
+
+private:
+	BCheckBox 		*fDynamicFilteringCheckBox;
+	BCheckBox 		*fDynamicFilteringInvertCheckBox;
+	BCheckBox 		*fDynamicFilteringIgnoreCaseCheckBox;
+	BMenuField		*fDynamicFilteringExpressionTypeMenuField;
+
+	bool			fDynamicFiltering;
+	bool			fDynamicFilteringInvert;
+	bool			fDynamicFilteringIgnoreCase;
+	int32			fDynamicFilteringExpressionType;
+
+	BCheckBox		*fStaticFilteringCheckBox;
+	BListView		*fStaticFilteringListView;
+	BScrollView		*fStaticFilteringScrollView;
+	BButton			*fStaticFilteringAddFilterButton;
+	BButton			*fStaticFilteringRemoveFilterButton;
+	
+	bool			fStaticFiltering;
+
+	typedef SettingsView _inherited;
+};
+
+class UndoSettingsView : public SettingsView {
+public:
+	UndoSettingsView(BRect);
+	~UndoSettingsView();
+
+	void MessageReceived(BMessage *);
+
+	void AttachedToWindow();
+	
+	void SetDefaults();
+	void Revert();
+	void ShowCurrentSettings(bool sendNotices = false);
+	void RecordRevertSettings();
+	bool ShowsRevertSettings() const;
+	void GetAndRefreshDisplayFigures() const;
+
+private:
+	BCheckBox		*fUndoEnabledCheckBox;
+	BTextControl	*fUndoDepthTextControl;
+	
+	bool			fUndoEnabled;
+	int32			fUndoDepth;
+	mutable int32	fDisplayedUndoDepth;
+
+	typedef SettingsView _inherited;
+};
+
+class IconThemeSettingsView : public SettingsView {
+
+public:
+					IconThemeSettingsView(BRect);
+					~IconThemeSettingsView();
+
+	void			MessageReceived(BMessage *);
+	void			AttachedToWindow();
+
+	void			SetDefaults();
+	void			Revert();
+	void			ShowCurrentSettings(bool sendNotices = false);
+	void			RecordRevertSettings();
+	bool			ShowsRevertSettings();
+	void			GetAndRefreshDisplayFigures();
+	void			UpdatePreview();
+	void			UpdateInfo();
+	void			UpdateThemeList(bool dowatch = false);
+
+private:
+	BOptionPopUp	*fThemesPopUp;
+	BButton			*fSequenceOptions;
+	BButton			*fApplyTheme;
+
+	BStringView		*fAuthorLabel;
+	BStringView		*fAuthorString;
+	BStringView		*fCommentLabel;
+	BStringView		*fCommentString;
+	BStringView		*fLinkLabel;
+	BLinkStringView	*fLinkString;
+
+	ThemePreView	*fPreview;
+
+	bool			fThemesEnabled;
+	BString			fCurrentTheme;
+	BString			fThemeLookupSequence;
+	BString			fDisplayedSequence;
+	BString			fDisplayedTheme;
+	
+	typedef SettingsView _inherited;
+};
+
+class LanguageThemeSettingsView : public SettingsView {
+
+public:
+					LanguageThemeSettingsView(BRect);
+					~LanguageThemeSettingsView();
+
+	void			MessageReceived(BMessage *);
+	void			AttachedToWindow();
+
+	void			SetDefaults();
+	void			Revert();
+	void			ShowCurrentSettings(bool sendNotices = false);
+	void			RecordRevertSettings();
+	bool			ShowsRevertSettings();
+	void			GetAndRefreshDisplayFigures();
+	void			UpdateInfo();
+	void			UpdateThemeList(bool dowatch = false);
+
+private:
+	BOptionPopUp	*fThemesPopUp;
+	BButton			*fApplyTheme;
+
+	BStringView		*fAuthorLabel;
+	BStringView		*fAuthorString;
+	BStringView		*fEMailLabel;
+	BStringView		*fEMailString;
+	BStringView		*fLinkLabel;
+	BLinkStringView	*fLinkString;
+
+	BString			fCurrentTheme;
+	BString			fDisplayedTheme;
+
+	typedef	SettingsView _inherited;
 };
 
 } // namespace BPrivate

@@ -1,6 +1,3 @@
-#if !defined(_FSCONTEXT_H)
-#define _FSCONTEXT_H
-
 // Open Tracker License
 //
 // Terms and Conditions
@@ -33,6 +30,9 @@
 // names are registered trademarks or trademarks of their respective holders.
 // All rights reserved.
 
+#ifndef _FSCONTEXT_H
+#define _FSCONTEXT_H
+
 #include <exception>
 #include <Entry.h>
 #include <Directory.h>
@@ -51,7 +51,8 @@
 #include <boost/call_traits.hpp>
 #include <boost/utility.hpp>
 
-#define FS_MONITOR_THREAD_WAITINGS	1		// print how much time the writer/reader thread was waiting for the next chunk
+#define FS_MONITOR_THREAD_WAITINGS	1
+	// print how much time the writer/reader thread was waiting for the next chunk
 
 //#define FS_NOTHROW			throw()		// with these the object file is a lot bigger... ?!
 //#define FS_THROW_FSEXCEPTION	throw(FSException)
@@ -109,19 +110,6 @@
 		FS_FILTER_EXCEPTION(kSkipOperation, NOP)						\
 	}
 
-/*
-// this will do something when leaving a block of code
-#define FS_WHEN_LEAVING_SCOPE(x)										\
-	struct foobar {														\
-		FSContext &mContext;											\
-																		\
-		foobar(FSContext &icontext) : mContext(icontext) {}				\
-		~foobar() {														\
-			x;															\
-		}																\
-	} _when_leaving_scope_(*this);
-*/
-
 #define FS_OPERATION_ETC(x, cond, cleanup)								\
 	try {																\
 		while ((rc = (x)) < 0  &&  (cond)  &&							\
@@ -166,7 +154,7 @@
 
 namespace fs {
 
-	using namespace boost;
+using namespace boost;
 
 class EntryIterator;
 
@@ -216,90 +204,105 @@ enum {
 
 // this is a wrapper around entry_ref, it will not allocate buffer for the name string if it's less then 32 bytes long
 class EntryRef {
-	static const int32 kBufferSize = 32;
-
-	entry_ref	mRef;
-	
-	char		mBuffer[kBufferSize];
-	int32		mSize;
-	bool			mDeleteName;
-
-	void	initialize() {
-				mRef.name = mBuffer;
-				mSize = kBufferSize;
-				mDeleteName = false;
-			}
-			
 public:
 
-	EntryRef(const EntryRef &other)									{ initialize(); SetTo(other); }
-	EntryRef() FS_NOTHROW											{ initialize(); }
-	EntryRef(dev_t idev, ino_t idir, const char *iname) FS_NOTHROW;
-	EntryRef(const entry_ref &) FS_NOTHROW;
-	~EntryRef();
+						EntryRef() FS_NOTHROW
+							{ initialize(); }
+						EntryRef(const EntryRef &other)
+							{ initialize(); SetTo(other); }
+						EntryRef(dev_t idev, ino_t idir, const char *iname) FS_NOTHROW;
+						EntryRef(const entry_ref &) FS_NOTHROW;
+						~EntryRef();
 
-	const char *Name() const FS_NOTHROW 							{ return mRef.name; }
-	dev_t		Device() const FS_NOTHROW 							{ return mRef.device; }
-	ino_t		Directory() const FS_NOTHROW						{ return mRef.directory; }
+		const char 		*Name() const FS_NOTHROW
+							{ return mRef.name; }
+		dev_t			Device() const FS_NOTHROW
+							{ return mRef.device; }
+		ino_t			Directory() const FS_NOTHROW
+							{ return mRef.directory; }
 
-	bool		IsYourParent(const node_ref &ref) const FS_NOTHROW	{ return (ref.device == mRef.device  &&  ref.node == mRef.directory); }
-	void		GetParentDirNodeRef(node_ref &ref) const FS_NOTHROW	{ ref.device = mRef.device; ref.node = mRef.directory; }
-	void		SetTo(const EntryRef &ref) FS_NOTHROW				{ SetTo(ref.Device(), ref.Directory(), ref.Name()); }
-	void		SetTo(const entry_ref &ref) FS_NOTHROW				{ SetTo(ref.device, ref.directory, ref.name); }
-	void		SetTo(dev_t dev, ino_t dir, const char *name) FS_NOTHROW;
+		bool			IsYourParent(const node_ref &ref) const FS_NOTHROW
+							{ return (ref.device == mRef.device  &&  ref.node == mRef.directory); }
+		void			GetParentDirNodeRef(node_ref &ref) const FS_NOTHROW
+							{ ref.device = mRef.device; ref.node = mRef.directory; }
+		void			SetTo(const EntryRef &ref) FS_NOTHROW
+							{ SetTo(ref.Device(), ref.Directory(), ref.Name()); }
+		void			SetTo(const entry_ref &ref) FS_NOTHROW
+							{ SetTo(ref.device, ref.directory, ref.name); }
+		void			SetTo(dev_t dev, ino_t dir, const char *name) FS_NOTHROW;
 
 	// !!! watch out, these are const entry_refs, may not be modified. you'll get a warning or error, too
-					operator const entry_ref *() const				{ return &mRef; }
-					operator const entry_ref &() const				{ return mRef; }
-	EntryRef &		operator=(const entry_ref &other)				{ SetTo(other); return *this;}
-	EntryRef &		operator=(const entry_ref *other)				{ SetTo(*other); return *this; }
-	EntryRef &		operator=(const EntryRef &other)				{ SetTo(other); return *this; }
+						operator const entry_ref *() const
+							{ return &mRef; }
+						operator const entry_ref &() const
+							{ return mRef; }
+		EntryRef 		&operator=(const entry_ref &other)
+							{ SetTo(other); return *this;}
+		EntryRef 		&operator=(const entry_ref *other)
+							{ SetTo(*other); return *this; }
+		EntryRef 		&operator=(const EntryRef &other)
+							{ SetTo(other); return *this; }
+
+private:
+
+static	const int32		kBufferSize = 32;
+
+		entry_ref		mRef;
+		char			mBuffer[kBufferSize];
+		int32			mSize;
+		bool			mDeleteName;
+
+		void			initialize() {
+							mRef.name = mBuffer;
+							mSize = kBufferSize;
+							mDeleteName = false;
+						}
 };
 
 #if _BUILDING_tracker
 
 class TrashedEntryRef : public EntryRef {	// be careful when using, should be protected inheritance
-	time_t		mTrashedDate;			// (mTrashedDate is cached, and does not handle SetTo()!)
-	
-public:
-	TrashedEntryRef() : mTrashedDate(0) { }
-	
-	time_t	TrashedDate() {
-				if (mTrashedDate == 0) {
-					BNode node(*this);
-					if (node.ReadAttr(kAttrTrashedDate, B_TIME_TYPE, 0, &mTrashedDate, sizeof(mTrashedDate)) < 0)
-						mTrashedDate = 1;	// very old
-				}
-				return mTrashedDate;
-			}
+public:										// (mTrashedDate is cached, and does not handle SetTo()!)
+						TrashedEntryRef()
+							: mTrashedDate(0) {}
+
+		time_t			TrashedDate() {
+							if (mTrashedDate == 0) {
+								BNode node(*this);
+								if (node.ReadAttr(kAttrTrashedDate, B_TIME_TYPE, 0, &mTrashedDate, sizeof(mTrashedDate)) < 0)
+									mTrashedDate = 1;	// very old
+							}
+							return mTrashedDate;
+						}
+
+private:
+		time_t			mTrashedDate;
 };
 
 #endif	// _BUILDING_tracker
 
 class WDChanger : noncopyable {
-	char	mOldPath[B_PATH_NAME_LENGTH];
-	bool	mChangeBack;
-
 public:
-	WDChanger() FS_NOTHROW : mChangeBack(false) {}
-	
-	~WDChanger() FS_NOTHROW {
-		if (mChangeBack)
-			chdir(mOldPath);
-	}
+						WDChanger() FS_NOTHROW
+							: mChangeBack(false) {}
+						~WDChanger() FS_NOTHROW {
+							if (mChangeBack)
+								chdir(mOldPath);
+						}
 
-	status_t	Change(const BPath &newpath) FS_NOTHROW {
-					getcwd(mOldPath, B_PATH_NAME_LENGTH);
-					mChangeBack = true;
-					return chdir(newpath.Path());
-				}
+		status_t		Change(const BPath &newpath) FS_NOTHROW {
+							getcwd(mOldPath, B_PATH_NAME_LENGTH);
+							mChangeBack = true;
+							return chdir(newpath.Path());
+						}
+private:
+		char			mOldPath[B_PATH_NAME_LENGTH];
+		bool			mChangeBack;
 };
 
-
-
 class FSContext : noncopyable {
-public:	
-	typedef vector<node_ref>	node_ref_list_t;
+public:
+	typedef vector<node_ref> node_ref_list_t;
 
 	enum answer_flags {
 		fCancel			= 0x0001,
@@ -312,7 +315,7 @@ public:
 		
 		fDefaultPossibleAnswers = fRetryOperation + fCancel
 	};
-	
+
 	enum copy_flags {
 		fCreationTime		= 0x0001,
 		fOwner				= 0x0002,
@@ -338,19 +341,19 @@ public:
 
 	enum interaction {
 		// Interaction constants for FSContext::Interaction().
-		#define		INT_0(name, string, showfile)													name,
-		#define		INT_1(name, string, showfile, a, ax)												name,
-		#define		INT_2(name, string, showfile, a, ax, b, bx)										name,
-		#define		INT_3(name, string, showfile, a, ax, b, bx, c, cx)									name,
-		#define		INT_4(name, string, showfile, a, ax, b, bx, c, cx, d, dx)							name,
-		#define		INT_5(name, string, showfile, a, ax, b, bx, c, cx, d, dx, e, ex)						name,
-		#define		INT_6(name, string, showfile, a, ax, b, bx, c, cx, d, dx, e, ex, f, fx)					name,
-		#define		INT_7(name, string, showfile, a, ax, b, bx, c, cx, d, dx, e, ex, f, fx, g, gx)				name,
-		#define		INT_8(name, string, showfile, a, ax, b, bx, c, cx, d, dx, e, ex, f, fx, g, gx, h, hx)		name,
+		#define		INT_0(name, string, showfile)																	name,
+		#define		INT_1(name, string, showfile, a, ax)															name,
+		#define		INT_2(name, string, showfile, a, ax, b, bx)														name,
+		#define		INT_3(name, string, showfile, a, ax, b, bx, c, cx)												name,
+		#define		INT_4(name, string, showfile, a, ax, b, bx, c, cx, d, dx)										name,
+		#define		INT_5(name, string, showfile, a, ax, b, bx, c, cx, d, dx, e, ex)								name,
+		#define		INT_6(name, string, showfile, a, ax, b, bx, c, cx, d, dx, e, ex, f, fx)							name,
+		#define		INT_7(name, string, showfile, a, ax, b, bx, c, cx, d, dx, e, ex, f, fx, g, gx)					name,
+		#define		INT_8(name, string, showfile, a, ax, b, bx, c, cx, d, dx, e, ex, f, fx, g, gx, h, hx)			name,
 		#define		INT_9(name, string, showfile, a, ax, b, bx, c, cx, d, dx, e, ex, f, fx, g, gx, h, hx, i, ix)	name,
-		#define		INT_10(name, string, showfile,a,ax,b,bx,c,cx,d,dx,e,ex,f,fx,g,gx,h,hx,i,ix,j,jx)			name,
-		#define		INT_11(name, string, showfile,a,ax,b,bx,c,cx,d,dx,e,ex,f,fx,g,gx,h,hx,i,ix,j,jx,k,kx)		name,
-		#define		INT_12(name, string, showfile,a,ax,b,bx,c,cx,d,dx,e,ex,f,fx,g,gx,h,hx,i,ix,j,jx,k,kx,l,lx)	name,
+		#define		INT_10(name, string, showfile,a,ax,b,bx,c,cx,d,dx,e,ex,f,fx,g,gx,h,hx,i,ix,j,jx)				name,
+		#define		INT_11(name, string, showfile,a,ax,b,bx,c,cx,d,dx,e,ex,f,fx,g,gx,h,hx,i,ix,j,jx,k,kx)			name,
+		#define		INT_12(name, string, showfile,a,ax,b,bx,c,cx,d,dx,e,ex,f,fx,g,gx,h,hx,i,ix,j,jx,k,kx,l,lx)		name,
 		#define		INT_13(name, string, showfile,a,ax,b,bx,c,cx,d,dx,e,ex,f,fx,g,gx,h,hx,i,ix,j,jx,k,kx,l,lx,m,mx) name,
 		#include	"FSInteractions.tbl"
 
@@ -365,17 +368,17 @@ public:
 		kTotalOperations,
 		kInvalidOperation = -1
 	};
-	
+
 	struct InteractionDescription {
 		const char *		mUserVisibleString;
 		bool				mShouldPrintFileInfo;
-		command		mPossibleAnswers[kMaxAnswersForInteraction];
+		command				mPossibleAnswers[kMaxAnswersForInteraction];
 		bool				mAnswerIsExtended[kMaxAnswersForInteraction];
 	};
-	
-	static const char *	sCommandStringTable[kTotalCommands];
-	static const char *	sTargetDirPrefixTable[kTotalOperations];
-	static const char *	sOperationStringTable[kTotalOperations];
+
+	static const char *sCommandStringTable[kTotalCommands];
+	static const char *sTargetDirPrefixTable[kTotalOperations];
+	static const char *sOperationStringTable[kTotalOperations];
 	static const InteractionDescription sInteractionsTable[kTotalInteractions];
 
 	class ProgressInfo : noncopyable {
@@ -386,58 +389,85 @@ public:
 		int32				mTotalFileCount;
 		int32				mTotalDirCount;
 		int32				mTotalLinkCount;
-		volatile off_t			mCurrentFileCurrentSize;
-		volatile off_t			mCurrentSize;
+		volatile off_t		mCurrentFileCurrentSize;
+		volatile off_t		mCurrentSize;
 		int32				mCurrentEntryCount;
 		int32				mCurrentFileCount;
 		int32				mCurrentDirCount;
 		int32				mCurrentLinkCount;
-		bool					mDirty;
-		bool					mTotalDisabled;		// this is set to true when an entry is skipped in such a way that it's impossible to follow total values right. (skipping a whole dir, no stat info yet available about the entry...)
-		bool					mTotalSizeProgressEnabled;	// set by operations that are related to size, not only count (copy and duplicate)
+		bool				mDirty;
+		bool				mTotalDisabled;				// this is set to true when an entry is skipped in such a way that it's impossible to follow total values right. (skipping a whole dir, no stat info yet available about the entry...)
+		bool				mTotalSizeProgressEnabled;	// set by operations that are related to size, not only count (copy and duplicate)
 
-				// Functions
-				ProgressInfo() FS_NOTHROW							{ Clear(); }
-				
-				void		Clear() FS_NOTHROW						{ memset(this, 0, sizeof(*this)); }
-				
-				void		EntryDone() FS_NOTHROW					{ ++mCurrentEntryCount; SetDirty(); }
-				void		DirectoryDone() FS_NOTHROW				{ ++mCurrentDirCount; EntryDone(); }
-				void		FileDone() FS_NOTHROW						{ ++mCurrentFileCount; EntryDone(); }
-				void		LinkDone() FS_NOTHROW						{ ++mCurrentLinkCount; EntryDone(); }
+		// Functions
+							ProgressInfo() FS_NOTHROW
+								{ Clear(); }
 
-				void		NewEntry() FS_NOTHROW					{ ++mTotalEntryCount; SetDirty(); }
-				void		NewDirectory() FS_NOTHROW				{ ++mTotalDirCount; NewEntry(); }
-				void		NewFile(off_t &size) FS_NOTHROW			{ ++mTotalFileCount; mTotalSize += size; NewEntry(); }
-				void		NewLink() FS_NOTHROW						{ ++mTotalLinkCount; NewEntry(); }
+		void				Clear() FS_NOTHROW
+								{ memset(this, 0, sizeof(*this)); }
+		void				EntryDone() FS_NOTHROW
+								{ ++mCurrentEntryCount; SetDirty(); }
+		void				DirectoryDone() FS_NOTHROW
+								{ ++mCurrentDirCount; EntryDone(); }
+		void				FileDone() FS_NOTHROW
+								{ ++mCurrentFileCount; EntryDone(); }
+		void				LinkDone() FS_NOTHROW
+								{ ++mCurrentLinkCount; EntryDone(); }
 
-				void		SkipEntry() FS_NOTHROW						{ --mTotalEntryCount; mCurrentFileCurrentSize = 0; SetDirty(); }
-				void		SkipFile(off_t &size) FS_NOTHROW			{ --mTotalFileCount; mTotalSize -= size; SkipEntry(); }
-				void		SkipLink() FS_NOTHROW						{ --mTotalLinkCount; SkipEntry(); }
-				void		SkipDirectory() FS_NOTHROW					{ --mTotalDirCount; SkipEntry(); DisableTotals(); }
-				
-				// XXX replace with atomic_add64 when available
-				void		ReadProgress(size_t size) FS_NOTHROW		{ mCurrentSize += size / 2; mCurrentFileCurrentSize += size / 2; SetDirty(); }
-				void		WriteProgress(size_t size) FS_NOTHROW		{ mCurrentSize += size / 2; mCurrentFileCurrentSize += size / 2; SetDirty(); }
-				
-				float	EntryProgress() const FS_NOTHROW			{ return (mTotalEntryCount > 0) ? (float)mCurrentEntryCount / mTotalEntryCount : 0; }
-				void		DisableTotalSizeProgress() FS_NOTHROW		{ mTotalSizeProgressEnabled = false; }
-				void		EnableTotalSizeProgress() FS_NOTHROW		{ mTotalSizeProgressEnabled = true; }
-				bool		IsTotalSizeProgressEnabled() const FS_NOTHROW	{ return mTotalSizeProgressEnabled; }
-				float	TotalSizeProgress() const FS_NOTHROW		{ return (mTotalSize > 0) ? (float)mCurrentSize / mTotalSize : 0; }
-				bool		HasFileSizeProgress() const FS_NOTHROW		{ return mCurrentFileTotalSize != 0; }
-				float	FileSizeProgress() const FS_NOTHROW			{ return (mCurrentFileTotalSize > 0) ? (float)mCurrentFileCurrentSize / mCurrentFileTotalSize : 0; } 
-	
-				bool		IsTotalEnabled() const FS_NOTHROW			{ return ! mTotalDisabled; }
-				void		DisableTotals() FS_NOTHROW					{ mTotalDisabled = true; }
-				
-				bool		IsDirty() const FS_NOTHROW					{ return mDirty; }
-				void		ClearDirty() FS_NOTHROW					{ mDirty = false; }
-				void		SetDirty() FS_NOTHROW						{ mDirty = true; }
-				
-				void		PrintToStream() FS_NOTHROW;
+		void				NewEntry() FS_NOTHROW
+								{ ++mTotalEntryCount; SetDirty(); }
+		void				NewDirectory() FS_NOTHROW
+								{ ++mTotalDirCount; NewEntry(); }
+		void				NewFile(off_t &size) FS_NOTHROW
+								{ ++mTotalFileCount; mTotalSize += size; NewEntry(); }
+		void				NewLink() FS_NOTHROW
+								{ ++mTotalLinkCount; NewEntry(); }
+
+		void				SkipEntry() FS_NOTHROW
+								{ --mTotalEntryCount; mCurrentFileCurrentSize = 0; SetDirty(); }
+		void				SkipFile(off_t &size) FS_NOTHROW
+								{ --mTotalFileCount; mTotalSize -= size; SkipEntry(); }
+		void				SkipLink() FS_NOTHROW
+								{ --mTotalLinkCount; SkipEntry(); }
+		void				SkipDirectory() FS_NOTHROW
+								{ --mTotalDirCount; SkipEntry(); DisableTotals(); }
+
+		// XXX replace with atomic_add64 when available
+		void				ReadProgress(size_t size) FS_NOTHROW
+								{ mCurrentSize += size / 2; mCurrentFileCurrentSize += size / 2; SetDirty(); }
+		void				WriteProgress(size_t size) FS_NOTHROW
+								{ mCurrentSize += size / 2; mCurrentFileCurrentSize += size / 2; SetDirty(); }
+
+		float				EntryProgress() const FS_NOTHROW
+								{ return (mTotalEntryCount > 0) ? (float)mCurrentEntryCount / mTotalEntryCount : 0; }
+		void				DisableTotalSizeProgress() FS_NOTHROW
+								{ mTotalSizeProgressEnabled = false; }
+		void				EnableTotalSizeProgress() FS_NOTHROW
+								{ mTotalSizeProgressEnabled = true; }
+		bool				IsTotalSizeProgressEnabled() const FS_NOTHROW
+								{ return mTotalSizeProgressEnabled; }
+		float				TotalSizeProgress() const FS_NOTHROW
+								{ return (mTotalSize > 0) ? (float)mCurrentSize / mTotalSize : 0; }
+		bool				HasFileSizeProgress() const FS_NOTHROW
+								{ return mCurrentFileTotalSize != 0; }
+		float				FileSizeProgress() const FS_NOTHROW
+								{ return (mCurrentFileTotalSize > 0) ? (float)mCurrentFileCurrentSize / mCurrentFileTotalSize : 0; } 
+
+		bool				IsTotalEnabled() const FS_NOTHROW
+								{ return ! mTotalDisabled; }
+		void				DisableTotals() FS_NOTHROW
+								{ mTotalDisabled = true; }
+
+		bool				IsDirty() const FS_NOTHROW
+								{ return mDirty; }
+		void				ClearDirty() FS_NOTHROW
+								{ mDirty = false; }
+		void				SetDirty() FS_NOTHROW
+								{ mDirty = true; }
+
+		void				PrintToStream() FS_NOTHROW;
 	};
-	
+
 private:
 	friend struct FileProgressAdder : noncopyable {
 		off_t			mOldCurrentSize;
@@ -534,33 +564,18 @@ private:
 	};
 
 	friend struct error_answer {
-		operation	operation;
+		operation	theoperation;
 		status_t	error;
 		command		answer;
 		
 		error_answer() {}
-		error_answer(operation iop, status_t ierr, command ianswer) : operation(iop), error(ierr), answer(ianswer) {}
+		error_answer(operation iop, status_t ierr, command ianswer) : theoperation(iop), error(ierr), answer(ianswer) {}
 
 		bool Equals(const operation op, const status_t err) const {
-			return op == operation  &&  error == err;
+			return op == theoperation  &&  error == err;
 		}
 	};
 	
-//	friend struct ProgressBackup {					// overkill... but it would make it possible to keep
-//		struct progress_info	mOldProgressInfo;	// progress bar in sync when skipping dirs
-//		FSContext				&mContext;
-//		
-//		ProgressBackup(FSContext &icontext) : mContext(icontext) { Backup(); }
-//		~ProgressBackup() {}
-//
-//		void Backup() {
-//			memcpy(&mOldProgressInfo, &mContext.mProgressInfo, sizeof(progress_info));
-//		}
-//		void Restore() {
-//			memcpy(&mContext.mProgressInfo, &mOldProgressInfo, sizeof(progress_info));
-//		}
-//	};
-
 	template <typename T, int size>
 	class Stack {
 	protected:
@@ -700,12 +715,12 @@ public:
 // Public operations, the API
 			status_t	CopyTo(EntryIterator *i, BDirectory &target_dir, bool async)			FS_NOTHROW;
 			status_t	CopyTo(EntryIterator &i, BDirectory &target_dir)						FS_NOTHROW;
-			status_t	CopyFileTo(entry_ref &_ref, BDirectory &target_dir, char *target_name) FS_NOTHROW;
+			status_t	CopyFileTo(entry_ref &_ref, BDirectory &target_dir, char *target_name)	FS_NOTHROW;
 			status_t	Duplicate(EntryIterator *i, bool async)									FS_NOTHROW;
 			status_t	Duplicate(EntryIterator &i)												FS_NOTHROW;
 			status_t	MoveTo(EntryIterator *i, BDirectory &target_dir, bool async)			FS_NOTHROW;
 			status_t	MoveTo(EntryIterator &i, BDirectory &target_dir)						FS_NOTHROW;
-			status_t	CreateLinkTo(EntryIterator *i, BDirectory &target_dir, bool relative, bool async) FS_NOTHROW;
+			status_t	CreateLinkTo(EntryIterator *i, BDirectory &target_dir, bool relative, bool async)	FS_NOTHROW;
 			status_t	CreateLinkTo(EntryIterator &i, BDirectory &target_dir, bool relative)	FS_NOTHROW;
 			status_t	MoveToTrashAsync(EntryIterator *i, bool async)							FS_NOTHROW;	// no way to select for &FSContext::MoveToTrash from the two functions if the MoveToTrash name is overloaded
 			status_t	MoveToTrash(EntryIterator &i)											FS_NOTHROW;
@@ -726,36 +741,29 @@ public:
 	static	bool		IsInTrash(const BEntry &in_entry)										FS_NOTHROW;
 	static	bool		IsTrashDir(const entry_ref &in_ref)										FS_NOTHROW;
 	static	bool		IsTrashDir(const BEntry &in_entry)										FS_NOTHROW;
+	static	bool		IsTrashEmpty()															FS_NOTHROW;
 	static	bool		IsHomeDir(const BEntry &in_entry)										FS_NOTHROW;
+	static	bool		IsHomeDir(const entry_ref &in_ref)										FS_NOTHROW;
 	static	bool		IsPrintersDir(const BEntry &in_entry)									FS_NOTHROW;
+	static	bool		IsDevDir(const char* in_string)											FS_NOTHROW;
+	static	bool		IsDevDir(const BPath &in_path)											FS_NOTHROW;
+	static	bool		IsDevDir(const BEntry &in_entry)										FS_NOTHROW;
+	static	bool		IsSystemDir(const BEntry &in_entry)										FS_NOTHROW;
+	static	bool		IsBeOSDir(const BEntry &in_entry)										FS_NOTHROW;
 	static	status_t	GetBootDesktopDir(BDirectory &in_dir)									FS_NOTHROW;
 	static	bool		IsDesktopDir(const BEntry &in_entry)									FS_NOTHROW;
 
-//	static	bool		IsTrashDir(const BEntry *);
-//	static	bool		IsDesktopDir(const BEntry *);
+	static	status_t	GetTrashDir(BDirectory &in_dir, dev_t in_device) FS_NOTHROW { return GetSpecialDir(in_dir, in_device, B_TRASH_DIRECTORY, sTrashDirList); }
+	static	bool		IsTrashDir(const BDirectory &in_dir) FS_NOTHROW { return IsSpecialDir(in_dir, B_TRASH_DIRECTORY, sTrashDirList); }
+	static	bool		IsTrashDir(const node_ref &in_ref) FS_NOTHROW { return IsSpecialDir(in_ref, B_TRASH_DIRECTORY, sTrashDirList); }
 
-	static	status_t	GetTrashDir(BDirectory &in_dir, dev_t in_device) FS_NOTHROW {
-						return GetSpecialDir(in_dir, in_device, B_TRASH_DIRECTORY, sTrashDirList);
-					}
-	static	bool		IsTrashDir(const node_ref &in_ref) FS_NOTHROW {
-						return IsSpecialDir(in_ref, B_TRASH_DIRECTORY, sTrashDirList);
-					}
-	static	bool		IsTrashDir(const BDirectory &in_dir) FS_NOTHROW {
-						return IsSpecialDir(in_dir, B_TRASH_DIRECTORY, sTrashDirList);
-					}
+	static	status_t	GetHomeDir(BDirectory &in_dir, dev_t in_device) FS_NOTHROW { return GetSpecialDir(in_dir, in_device, B_USER_DIRECTORY, sHomeDirList); }
+	static	bool		IsHomeDir(const BDirectory &in_dir) FS_NOTHROW { return IsSpecialDir(in_dir, B_USER_DIRECTORY, sHomeDirList); }
+	static	bool		IsHomeDir(const node_ref &in_ref) FS_NOTHROW { return IsSpecialDir(in_ref, B_USER_DIRECTORY, sHomeDirList); }
 
-	static	bool		IsHomeDir(const BDirectory &in_dir) FS_NOTHROW {
-						return IsSpecialDir(in_dir, B_USER_DIRECTORY, sHomeDirList);
-					}
-	static	status_t	GetDesktopDir(BDirectory &in_dir, dev_t in_device) FS_NOTHROW {
-						return GetSpecialDir(in_dir, in_device, B_DESKTOP_DIRECTORY, sDesktopDirList);
-					}
-	static	bool		IsDesktopDir(const BDirectory &in_dir) FS_NOTHROW {
-						return IsSpecialDir(in_dir, B_DESKTOP_DIRECTORY, sDesktopDirList);
-					}
-	static	bool		IsDesktopDir(const node_ref &in_dir) FS_NOTHROW {
-						return IsSpecialDir(in_dir, B_DESKTOP_DIRECTORY, sDesktopDirList);
-					}
+	static	status_t	GetDesktopDir(BDirectory &in_dir, dev_t in_device) FS_NOTHROW {	return GetSpecialDir(in_dir, in_device, B_DESKTOP_DIRECTORY, sDesktopDirList); }
+	static	bool		IsDesktopDir(const BDirectory &in_dir) FS_NOTHROW {	return IsSpecialDir(in_dir, B_DESKTOP_DIRECTORY, sDesktopDirList); }
+	static	bool		IsDesktopDir(const node_ref &in_ref) FS_NOTHROW { return IsSpecialDir(in_ref, B_DESKTOP_DIRECTORY, sDesktopDirList); }
 
 private:
 						FSContext(const FSContext &);
@@ -982,6 +990,7 @@ protected:	void		CheckFreeSpaceOnTarget(off_t size, interaction icode) FS_THROW_
 
 			bool		CreateLink(BEntry &source_entry, BDirectory &target_dir, char *target_name, bool relative) FS_THROW_FSEXCEPTION;
 			void		CreateDirectory(BPath &path, bool is_dir) FS_THROW_FSEXCEPTION;
+	inline	status_t	CreateDirectory(BDirectory *target_dir, char *target_name, BDirectory *new_dir);
 			void		CheckTargetDirectory(BEntry &entry, BDirectory &target_dir) FS_THROW_FSEXCEPTION {
 							CheckTargetDirectory(entry, target_dir, entry.IsDirectory());
 						}
@@ -1007,6 +1016,8 @@ private:
 	static	node_ref_list_t				sDesktopDirList;
 	static	node_ref_list_t				sPrintersDirList;
 	static	node_ref_list_t				sHomeDirList;
+	static	node_ref_list_t				sSystemDirList;
+	static	node_ref_list_t				sBeOSDirList;
 	static	int32						sEmptyTrashRunning;
 	static	command					sLastSelectedInteractionAnswers[kTotalInteractions]; // initialized to all kInvalidCommand
 
@@ -1263,17 +1274,3 @@ public:
 
 
 #endif // _FSCONTEXT_H
-
-
-
-
-
-
-
-
-
-
-
-
-
-

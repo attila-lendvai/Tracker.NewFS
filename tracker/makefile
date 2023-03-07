@@ -22,7 +22,7 @@ SHARED_INCLUDE_PATHS = shared
 LOCAL_INCLUDE_PATHS = $(ROOT_DIR)/$(SHARED_INCLUDE_PATHS)
 SYSTEM_INCLUDE_PATHS = $(ROOT_DIR)/boost
 
-BERES = $(BIN_DIR)/beres
+BERES = beres
 
 ifeq ($(CPU), x86)
 	WARNINGS = \
@@ -60,6 +60,8 @@ endif
 ORIGIN := /boot/home/src/OpenTracker/ 
 
 sources_src := \
+	TrackerFilters.cpp \
+	FSUtils.cpp \
 	FSDialogWindow.cpp \
 	FSStatusWindow.cpp \
 	TFSContext.cpp \
@@ -71,8 +73,8 @@ sources_src := \
 	BackgroundImage.cpp \
 	Bitmaps.cpp \
 	ContainerWindow.cpp \
+	ExtendedIcon.cpp \
 	FSClipboard.cpp\
-	FSUtils.cpp \
 	CountView.cpp \
 	DeskWindow.cpp \
 	DesktopPoseView.cpp \
@@ -127,6 +129,7 @@ sources_src := \
 	TrackerSettingsWindow.cpp \
 	TrackerString.cpp \
 	TrashWatcher.cpp \
+	Undo.cpp \
 	Utilities.cpp \
 	ViewState.cpp \
 	WidgetAttributeText.cpp \
@@ -176,7 +179,7 @@ LIB_EXP		:= $(OBJ_DIR)/$(basename $(LIB_NAME)).exp
 MIMESET		:= mimeset
 XRES		:= xres
 
-CFLAGS := $(DEBUG) $(OPTIMIZER) $(WARNINGS) -D_BUILDING_tracker=1 -DOPEN_TRACKER=1
+CFLAGS := $(DEBUG) $(OPTIMIZER) $(WARNINGS) -D_BUILDING_tracker=1 -DOPEN_TRACKER=1 -D_IMPEXP_TRACKER="" -D_IMPEXP_BE="" -D_IMPEXP_ROOT=""
 LDFLAGS	:= $(DEBUG)
 
 #	x86 Settings
@@ -184,7 +187,7 @@ ifeq ($(CPU), x86)
 #	set the compiler and compiler flags
 	CC		:= gcc
 	LD		:= gcc
-	LDFLAGS += -lbe
+	LDFLAGS += -lbe #-lstdc++.r4
 
 	APP_LDFLAGS = $(LDFLAGS) \
 				-Xlinker -soname=_APP_
@@ -318,11 +321,19 @@ LIB_LDFLAGS += $(LINKER_FLAGS)
 
 #	define the actual work to be done	
 all: $(TARGET)
-default: $(TARGET)
+default: $(TARGET_LIB)
+tracker: $(TARGET)
 libtracker: $(TARGET_LIB)
 
+# The old way of duplicating everything in a seperat Tracker
+#$(TARGET):	$(OBJ_DIR) $(OBJS) $(RSRCS) $(APP_RSRCS)
+#		$(LD) -o $@ $(OBJS) $(APP_LDFLAGS)
+#		$(XRES) -o "$(TARGET)" $(RSRCS) $(APP_RSRCS)
+#		$(MIMESET) -f $@
+
+# And the new way: simply linking against the libtracker that includes everything
 $(TARGET):	$(OBJ_DIR) $(OBJS) $(RSRCS) $(APP_RSRCS)
-		$(LD) -o $@ $(OBJS) $(APP_LDFLAGS)
+		$(LD) -o $@ "$(OBJ_DIR)/main.o" -ltracker $(APP_LDFLAGS)
 		$(XRES) -o "$(TARGET)" $(RSRCS) $(APP_RSRCS)
 		$(MIMESET) -f $@
 
@@ -333,20 +344,25 @@ $(TARGET_LIB):	$(OBJ_DIR) $(LIB_OBJS) $(RSRCS) $(LIB_EXP)
  
 $(LIB_EXP):
 		$(BUILD_EXP)
- 
- install:	$(TARGET) $(TARGET_LIB)
-		cp $(TARGET) /system
-		cp $(TARGET_LIB) /system/lib
 
+installlib:	$(TARGET_LIB)
+		cp $(TARGET_LIB) /system/lib
+		copyattr $(TARGET_LIB) /system/lib/$(LIB_NAME)
+
+installapp:	$(TARGET)
+		cp $(TARGET) /system
+		copyattr $(TARGET) /system/$(NAME)
+
+install:	installlib installapp
 
 #	rule to create the object file directory if needed
 $(OBJ_DIR)::
 	@[ -d $(OBJ_DIR) ] || mkdir $(OBJ_DIR) > /dev/null 2>&1
 
 $(OBJ_DIR)/%.o : %.c
-	$(CC) -c $< $(INCLUDES) $(CFLAGS) -o $@
+	$(CC) $(INCLUDES) $(CFLAGS) -c $< -o $@
 $(OBJ_DIR)/%.o : %.cpp
-	$(CC) -c $< $(INCLUDES) $(CFLAGS) -o $@
+	$(CC) $(INCLUDES) $(CFLAGS) -c $< -o $@
 $(OBJ_DIR)/%.rsrc : %.rdef
 	$(BERES) -o $@ $<
 
@@ -398,6 +414,3 @@ cleanexp :: FORCE
 	rm -f $(LIB_EXP)
 
 -include $(DEPENDENCIES)
-
-
-

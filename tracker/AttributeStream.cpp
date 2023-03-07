@@ -32,6 +32,7 @@ names are registered trademarks or trademarks of their respective holders.
 All rights reserved.
 */
 
+#include "Defines.h"
 #include <Node.h>
 #include "AttributeStream.h"
 
@@ -654,11 +655,11 @@ NamesToAcceptAttrFilter::Reject(const char *name, uint32 , off_t )
 			break;
 
 		if (strcmp(name, fNameList[index]) == 0) {
-//			PRINT(("filter passing through %s\n", name));
+			PRINT(("filter passing through %s\n", name));
 			return false;
 		}
 	}
-//	PRINT(("filter rejecting %s\n", name));
+	PRINT(("filter rejecting %s\n", name));
 	return true;
 }
 

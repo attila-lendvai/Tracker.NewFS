@@ -45,6 +45,9 @@ All rights reserved.
 #include "IconCache.h"
 #include "ObjectList.h"
 
+#ifdef B_BEOS_VERSION_DANO
+  #include <Query.h>
+#endif
 
 class BPath;
 class BHandler;
@@ -112,7 +115,7 @@ public:
 
 	BNode *Node() const;
 		// returns null if not Open
-	void GetPath(BPath *) const;	
+	void GetPath(BPath *) const;
 	void GetEntry(BEntry *) const;	
 	
 	const char *MimeType() const;
@@ -312,7 +315,7 @@ Model::EntryRef() const
 inline const node_ref *
 Model::NodeRef() const
 {
-	return (node_ref *)&fStatBuf;
+	return (const node_ref *)&fStatBuf;
 }
 
 inline BNode *

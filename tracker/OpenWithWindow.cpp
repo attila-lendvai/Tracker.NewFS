@@ -48,11 +48,12 @@ All rights reserved.
 #include "Attributes.h"
 #include "AutoLock.h"
 #include "Commands.h"
-#include "TFSContext.h"
 #include "IconMenuItem.h"
-#include "OpenWithWindow.h"
+#include "LanguageTheme.h"
 #include "MimeTypes.h"
+#include "OpenWithWindow.h"
 #include "StopWatch.h"
+#include "TFSContext.h"
 #include "Tracker.h"
 
 const char *kDefaultOpenWithTemplate = "OpenWithSettings";
@@ -107,7 +108,7 @@ OpenWithContainerWindow::OpenWithContainerWindow(BMessage *
 	BRect buttonRect(rect);
 	buttonRect.InsetBy(30, 10);
 	buttonRect.SetLeftTop(buttonRect.RightBottom() - kSmallButtonRect);
-	fLaunchButton = new BButton(buttonRect, "ok", "Open",
+	fLaunchButton = new BButton(buttonRect, "ok", LOCALE("Open"),
 		new BMessage(kDefaultButton), B_FOLLOW_RIGHT | B_FOLLOW_BOTTOM);
 	backgroundView->AddChild(fLaunchButton);
 	fLaunchButton->MakeDefault(true);
@@ -116,7 +117,7 @@ OpenWithContainerWindow::OpenWithContainerWindow(BMessage *
 		buttonRect.top);
 	buttonRect.SetRightBottom(buttonRect.LeftTop() + kLargeButtonRect);
 	fLaunchAndMakeDefaultButton = new BButton(buttonRect, "make default",
-		"Open and Make Preferred", new BMessage(kOpenAndMakeDefault),
+		LOCALE("Open and Make Preferred"), new BMessage(kOpenAndMakeDefault),
 		B_FOLLOW_RIGHT | B_FOLLOW_BOTTOM);
 	// wide button, have to resize to fit text
 	fLaunchAndMakeDefaultButton->ResizeToPreferred();
@@ -131,7 +132,7 @@ OpenWithContainerWindow::OpenWithContainerWindow(BMessage *
 	buttonRect.SetRightBottom(buttonRect.LeftTop() + kSmallButtonRect);
 	
 	backgroundView->AddChild(new BButton(buttonRect, "cancel",
-		"Cancel", new BMessage(kCancelButton),
+		LOCALE("Cancel"), new BMessage(kCancelButton),
 		B_FOLLOW_RIGHT | B_FOLLOW_BOTTOM));
 
 	// set the window title
@@ -139,12 +140,12 @@ OpenWithContainerWindow::OpenWithContainerWindow(BMessage *
 		// if opening just one file, use it in the title
 		entry_ref ref;
 		fEntriesToOpen->FindRef("refs", &ref);
-		BString buffer;
-		buffer << "Open " << ref.name << " With:";
-		SetTitle(buffer.String());
+		char buffer[1024];
+		sprintf(buffer, LOCALE("Open %s With:"), ref.name);
+		SetTitle(buffer);
 	} else
 		// use generic title
-		SetTitle("Open Selection With:");
+		SetTitle(LOCALE("Open Selection With:"));
 
 	AddCommonFilter(new BMessageFilter(B_KEY_DOWN, &OpenWithContainerWindow::KeyDownFilter));
 }
@@ -178,7 +179,6 @@ void
 OpenWithContainerWindow::OpenWithSelection()
 {
 	int32 count = PoseView()->SelectionList()->CountItems();
-	ASSERT(count == 1);
 	if (!count)
 		return;
 
@@ -346,7 +346,7 @@ OpenWithContainerWindow::NewAttributeMenu(BMenu *menu)
 	message->AddInt32("attr_align", B_ALIGN_LEFT);
 	message->AddBool("attr_editable", false);
 	message->AddBool("attr_statfield", false);
-	BMenuItem *item = new BMenuItem("Relation", message);
+	BMenuItem *item = new BMenuItem(LOCALE("Relation"), message);
 	menu->AddItem(item);
 	message = new BMessage(kAttributeItem);
 	message->AddString("attr_name", kAttrAppVersion);
@@ -356,7 +356,7 @@ OpenWithContainerWindow::NewAttributeMenu(BMenu *menu)
 	message->AddInt32("attr_align", B_ALIGN_LEFT);
 	message->AddBool("attr_editable", false);
 	message->AddBool("attr_statfield", false);
-	item = new BMenuItem("Version", message);
+	item = new BMenuItem(LOCALE("Version"), message);
 	menu->AddItem(item);
 }
 
@@ -612,11 +612,11 @@ OpenWithPoseView::OpenSelection(BPose *pose, int32 *)
 
 	BEntry entry(pose->TargetModel()->EntryRef());
 	if (entry.InitCheck() != B_OK) {
-		BString errorString;
-		errorString << "Could not find application \""
-			<< pose->TargetModel()->Name() << "\"";
+		char buffer[1024];
+		sprintf(buffer, LOCALE("Could not find application \"%s\""),
+				pose->TargetModel()->Name());
 
-		(new BAlert("", errorString.String(), "OK", 0, 0, B_WIDTH_AS_USUAL,
+		(new BAlert("", buffer, LOCALE("OK"), 0, 0, B_WIDTH_AS_USUAL,
 			B_WARNING_ALERT))->Go();
 		return;
 	}
@@ -625,15 +625,15 @@ OpenWithPoseView::OpenSelection(BPose *pose, int32 *)
 	if (OpenWithRelation(pose->TargetModel()) == kNoRelation) {
 		if (!fIterator->GenericFilesOnly()) {
 
-			BString warning;
-			warning << "The application \"" << pose->TargetModel()->Name()
-				<< "\" does not support the type of document you are "
-				"about to open. Are you sure you want to proceed? If you know that "
-				"the application supports the document type, you should contact the "
-				"publisher of the application and ask them to update their application "
-				"to list the type of your document as supported.";
+			char buffer[1024];
+			sprintf(buffer, LOCALE("The application \"%s\" does not support the type "
+				"of document you are about to open. Are you sure you want to proceed? "
+				"If you know that the application supports the document type, you "
+				"should contact the publisher of the application and ask them to update "
+				"their application to list the type of your document as supported."),
+				pose->TargetModel()->Name());
 
-			if ((new BAlert("", warning.String(), "Cancel", "Open", 0,
+			if ((new BAlert("", buffer, LOCALE("Cancel"), LOCALE("Open"), 0,
 				B_WIDTH_AS_USUAL, B_WARNING_ALERT))->Go() == 0)
 				return;
 		}	// else - once we have an extensible sniffer, tell users to ask
@@ -678,12 +678,13 @@ OpenWithPoseView::Pulse()
 	// it as preferred
 	Model *firstSelected = fSelectionList->FirstItem()->TargetModel();
 	if (OpenWithRelation(firstSelected) == kNoRelation) {
-		window->SetCanSetAppAsDefault(true);
+		window->SetCanSetAppAsDefault(false);
+		window->SetCanOpen(true);
 		_inherited::Pulse();
 		return;
 	}
 
-	// make the open button enabled, because we have na app selected
+	// make the open button enabled, because we have an app selected
 	window->SetCanOpen(true);
 	if (!fHaveCommonPreferredApp) {
 		window->SetCanSetAppAsDefault(true);
@@ -708,15 +709,15 @@ OpenWithPoseView::SetUpDefaultColumnsIfNeeded()
 	if (fColumnList->CountItems() != 0)
 		return;
 
-	BColumn *nameColumn = new BColumn("Name", kColumnStart, 125, B_ALIGN_LEFT,
+	BColumn *nameColumn = new BColumn(LOCALE("Name"), kColumnStart, 125, B_ALIGN_LEFT,
 		kAttrStatName, B_STRING_TYPE, true, true);
 	fColumnList->AddItem(nameColumn);
-	BColumn *relationColumn = new BColumn("Relation", 180, 100, B_ALIGN_LEFT,
+	BColumn *relationColumn = new BColumn(LOCALE("Relation"), 180, 100, B_ALIGN_LEFT,
 		kAttrOpenWithRelation, B_STRING_TYPE, false, false);
 	fColumnList->AddItem(relationColumn);
-	fColumnList->AddItem(new BColumn("Path", 290, 225, B_ALIGN_LEFT,
+	fColumnList->AddItem(new BColumn(LOCALE("Path"), 290, 225, B_ALIGN_LEFT,
 		kAttrPath, B_STRING_TYPE, true, false));
-	fColumnList->AddItem(new BColumn("Version", 525, 70, B_ALIGN_LEFT,
+	fColumnList->AddItem(new BColumn(LOCALE("Version"), 525, 70, B_ALIGN_LEFT,
 		kAttrAppVersion, B_STRING_TYPE, false, false));
 
 	// sort by relation and by name
@@ -900,7 +901,7 @@ OpenWithMenu::OpenWithMenu(const char *label, const BMessage *entriesToOpen,
 		fSupportingAppList(NULL),
 		fParentWindow(parentWindow)
 {
-/*	TTrackerState::InitIfNeeded(); */
+	InitIconPreloader();
 
 	SetFont(be_plain_font);
 
@@ -964,9 +965,7 @@ OpenWithMenu::StartBuildingItemList()
 	fHaveCommonPreferredApp = fIterator->GetPreferredApp(&fPreferredRef);
 	status_t error = fIterator->Rewind();
 	if (error != B_OK) {
-#if DEBUG
 		PRINT(("failed to initialize iterator %s\n", strerror(error)));
-#endif
 		return false;
 	}
 
@@ -1044,15 +1043,13 @@ OpenWithMenu::DoneBuildingItemList()
 			BPath path;
 			BEntry entry(model->EntryRef());
 			if (entry.GetPath(&path) != B_OK) {
-#if DEBUG
 				PRINT(("stale entry ref %s\n", model->Name()));
-#endif
 				delete message;
 				continue;
 			}
 
-			TruncString(&font, path.Path(), result, kMaxMenuWidth,
-				B_TRUNCATE_MIDDLE);
+			result = path.Path();
+			font.TruncateString(&result, B_TRUNCATE_MIDDLE, kMaxMenuWidth);
 		}
 #if DEBUG
 		BString relationDescription;
@@ -1072,9 +1069,7 @@ OpenWithMenu::DoneBuildingItemList()
 		AddItem(item);
 		// mark item if it represents the preferred app
 		if (fHaveCommonPreferredApp && *(model->EntryRef()) == fPreferredRef) {
-#if DEBUG
-				PRINT(("marking item for % as preferred", model->Name()));
-#endif
+			PRINT(("marking item for % as preferred", model->Name()));
 			item->SetMarked(true);
 		}
 	}
@@ -1086,7 +1081,7 @@ OpenWithMenu::DoneBuildingItemList()
 		SetTargetForItems(fMessenger);
 
 	if (!CountItems()) {
-		BMenuItem *item = new BMenuItem("no supporting apps", 0);
+		BMenuItem *item = new BMenuItem(LOCALE("no supporting apps"), 0);
 		item->SetEnabled(false);
 		AddItem(item);
 	}
@@ -1190,9 +1185,7 @@ SearchForSignatureEntryList::Rewind()
 	fSignatures.EachElement(AddOnePredicateTerm, &params);
 
 	ASSERT(predicateString.Length());
-#if DEBUG
  	PRINT(("query predicate %s\n", predicateString.String()));
-#endif
 	fIteratorList->AddItem(new TWalkerWrapper(
 		new WALKER_NS::TQueryWalker(predicateString.String())));
 	fIteratorList->AddItem(new ConditionalAllAppsIterator(this));
@@ -1343,7 +1336,7 @@ SearchForSignatureEntryList::RelationDescription(const BMessage *entriesToOpen,
 			break;
 
 		if (preferredAppForFile && ref == *preferredAppForFile) {
-			*description = "Preferred for file";
+			*description = LOCALE("Preferred for file");
 			return;
 		}
 		
@@ -1358,7 +1351,7 @@ SearchForSignatureEntryList::RelationDescription(const BMessage *entriesToOpen,
 				continue;
 
 			case kSuperhandler:
-				*description = "Handles any file";
+				*description = LOCALE("Handles any file");
 				return;
 
 			case kSupportsSupertype:
@@ -1371,13 +1364,11 @@ SearchForSignatureEntryList::RelationDescription(const BMessage *entriesToOpen,
 					if (tmp)
 						*tmp = '\0';
 						
-#if DEBUG
 					PRINT(("getting supertype for %s, result %s, got %s\n",
-#endif
-					//	model.MimeType(), strerror(result), mimeType.Type()));
-					*description = "Handles any ";
-					// *description += mimeType.Type();
-					*description += type;
+						model.MimeType(), strerror(result), mimeType.Type()));
+					char buffer[1024];
+					sprintf(buffer, LOCALE("Handles any %s"), type);
+					*description = buffer;
 					return;
 				}
 	
@@ -1385,23 +1376,27 @@ SearchForSignatureEntryList::RelationDescription(const BMessage *entriesToOpen,
 				{
 					mimeType.SetTo(model.MimeType());
 					
+					const char *format = "";
+					char buffer[1024];
 					if (preferredApp && *applicationModel->EntryRef() == *preferredApp)
 						// application matches cached preferred app, we are done
-						*description = "Preferred for ";
+						format = LOCALE("Preferred for %s");
 					else
-						*description = "Handles ";
-			
+						format = LOCALE("Handles %s");
+					
 					char shortDescription[256];
 					if (mimeType.GetShortDescription(shortDescription) == B_OK)
-						*description += shortDescription;
+						sprintf(buffer, format, shortDescription);
 					else
-						*description += mimeType.Type();
+						sprintf(buffer, format, mimeType.Type());
+					
+					*description = buffer;
 					return;
 				}
 		}
 	}
 	
-	*description = "Does not handle file";
+	*description = LOCALE("Does not handle file");
 }
 
 bool

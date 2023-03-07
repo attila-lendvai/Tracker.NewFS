@@ -35,6 +35,8 @@ All rights reserved.
 #ifndef _TRACKER_STRING_H
 #define _TRACKER_STRING_H
 
+#include "Defines.h"
+
 #include <ctype.h>
 
 #include <OS.h>

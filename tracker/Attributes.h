@@ -64,6 +64,7 @@ namespace BPrivate {
 #define kAttrPreferredApp				"BEOS:PREF_APP"
 #define	kAttrLargeIcon					"BEOS:L:STD_ICON"
 #define	kAttrMiniIcon					"BEOS:M:STD_ICON"
+#define kAttrScalableIcon				"BEOS:V:STD_ICON"
 
 #define	kAttrDisksFrame					"_trk/d_windframe"
 #define	kAttrDisksWorkspace				"_trk/d_windwkspc"
@@ -97,6 +98,8 @@ namespace BPrivate {
 #define	kAttrColumns_le					"_trk/columns_le"
 #define	kAttrViewState_be				"_trk/viewstate"
 #define	kAttrViewState_le				"_trk/viewstate_le"
+#define	kAttrDeskViewState_be			"_trk/desk_viewstate"
+#define	kAttrDeskViewState_le			"_trk/desk_viewstate_le"
 #define	kAttrDisksViewState_be			"_trk/d_viewstate"
 #define	kAttrDisksViewState_le			"_trk/d_viewstate_le"
 #define	kAttrDisksColumns_be			"_trk/d_columns"
@@ -122,6 +125,9 @@ namespace BPrivate {
 
 #define	kAttrViewState					kAttrViewState_le
 #define	kAttrViewStateForeign			kAttrViewState_be
+
+#define	kAttrDeskViewState				kAttrDeskViewState_le
+#define	kAttrDeskViewStateForeign		kAttrDeskViewState_be
 
 #define	kAttrDisksViewState				kAttrDisksViewState_le
 #define	kAttrDisksViewStateForeign		kAttrDisksViewState_be
@@ -151,6 +157,9 @@ namespace BPrivate {
 
 #define	kAttrViewState					kAttrViewState_be
 #define	kAttrViewStateForeign			kAttrViewState_le
+
+#define	kAttrDeskViewState				kAttrDeskViewState_be
+#define	kAttrDeskViewStateForeign		kAttrDeskViewState_le
 
 #define	kAttrDisksViewState				kAttrDisksViewState_be
 #define	kAttrDisksViewStateForeign		kAttrDisksViewState_le

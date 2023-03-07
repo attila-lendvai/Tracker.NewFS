@@ -56,6 +56,8 @@ public:
 	
 	void SetMenuBar(BMenuBar *);
 	
+	virtual void MouseDown(BPoint where);
+	
 private:
 	BMenuBar *fMenuBar;
 	uint32 fCommand;

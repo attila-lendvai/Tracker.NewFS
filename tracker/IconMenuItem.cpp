@@ -38,9 +38,11 @@ All rights reserved.
 #include <Menu.h>
 #include <NodeInfo.h>
 
+#include "AutoLock.h"
+#include "Defines.h"
 #include "IconCache.h"
 #include "IconMenuItem.h"
-
+#include "NavMenu.h"
 
 ModelMenuItem::ModelMenuItem(const Model *model, const char *title,
 	BMessage *message, char shortcut, uint32 modifiers,
@@ -120,6 +122,7 @@ DimmedIconBlitter(BView *view, BPoint where, BBitmap *bitmap, void *)
 	view->SetDrawingMode(B_OP_OVER);
 }
 
+#if 1
 void
 ModelMenuItem::DrawIcon()
 {
@@ -130,26 +133,83 @@ ModelMenuItem::DrawIcon()
 	
 	float deltaHeight = fHeightDelta < 0 ? -fHeightDelta : 0;
 	where.y += ceil( deltaHeight/2 );
-
+	
 	if (fExtraPad)
 		where.x += 6;
-
+	
 	Menu()->SetDrawingMode(B_OP_OVER);
 	Menu()->SetLowColor(B_TRANSPARENT_32_BIT);
 	
 	// draw small icon, synchronously
 	if (IsEnabled())
-		IconCache::iconCache->Draw(fModel.ResolveIfLink(), Menu(), where,
+		IconCache::sIconCache->Draw(fModel.ResolveIfLink(), Menu(), where,
 			kNormalIcon, B_MINI_ICON);
 	else {
 		// dimmed, for now use a special blitter; icon cache should
 		// know how to blit one eventually
-		IconCache::iconCache->SyncDraw(fModel.ResolveIfLink(), Menu(), where,
+		IconCache::sIconCache->SyncDraw(fModel.ResolveIfLink(), Menu(), where,
 			kNormalIcon, B_MINI_ICON, DimmedIconBlitter);
 	}
 	
 	Menu()->PopState();
 }
+#else
+void
+ModelMenuItem::DrawIcon()
+{
+#if 0
+	fAsyncDrawingThread = spawn_thread(DrawIconAsync, "model_menu_item_draw", B_LOW_PRIORITY, (void *)this);
+	resume_thread(fAsyncDrawingThread);
+#else
+	((BNavMenu *)Menu())->AddAsyncItem(this);
+#endif
+}
+
+int32
+ModelMenuItem::DrawIconAsync(void *arg)
+{
+	ModelMenuItem *source = (ModelMenuItem *)arg;
+	if (!source || !source->fDrawIcon)
+		return -1;
+	
+	if (!source->Menu()->Window()) {
+		// we are hidden, cancel
+		source->fAsyncDrawingThread = 0;
+		return 1;
+	}
+	
+	AutoLock<BLooper> lock(source->Menu()->Looper());
+	BPoint where(source->ContentLocation());
+	// center icon with text.
+	
+	float deltaHeight = source->fHeightDelta < 0 ? -source->fHeightDelta : 0;
+	where.y += ceil( deltaHeight/2 );
+
+	if (source->fExtraPad)
+		where.x += 6;
+	
+	source->Menu()->SetDrawingMode(B_OP_OVER);
+	source->Menu()->SetLowColor(B_TRANSPARENT_32_BIT);
+	source->Menu()->PushState();
+	lock.Unlock(); // unlock here, will be locked by iconcache after loading the icon
+	
+	// draw small icon, synchronously
+	if (source->IsEnabled()) {
+		IconCache::sIconCache->Draw(source->fModel.ResolveIfLink(), source->Menu(), where,
+			kNormalIcon, B_MINI_ICON);
+	} else {
+		// dimmed, for now use a special blitter; icon cache should
+		// know how to blit one eventually
+		IconCache::sIconCache->SyncDraw(source->fModel.ResolveIfLink(), source->Menu(), where,
+			kNormalIcon, B_MINI_ICON, DimmedIconBlitter);
+	}
+	
+	lock.Lock();
+	source->Menu()->PopState();
+	source->fAsyncDrawingThread = 0;
+	return 0;
+}
+#endif
 
 void
 ModelMenuItem::GetContentSize(float *width, float *height)
@@ -185,7 +245,7 @@ ModelMenuItem::Invoke(BMessage *message)
 		// if option not held, remove refs to close to prevent closing
 		// parent window
 		clone.RemoveData("nodeRefsToClose");
-
+	
 	return BInvoker::Invoke(&clone);
 }
 

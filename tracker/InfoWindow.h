@@ -38,6 +38,8 @@ All rights reserved.
 #include <String.h>
 #include <Window.h>
 #include <MessageFilter.h>
+#include <MenuField.h>
+#include <Button.h>
 
 #include "DialogPane.h" 
 #include "FilePermissionsView.h"
@@ -63,129 +65,143 @@ enum track_state {
 
 class TrackingView : public BView {
 public:
-	TrackingView(BRect, const Model *model, const char *str, const BFont *font);
+						TrackingView(BRect, const Model *model, const char *str, const BFont *font);
 
-	virtual void MouseDown(BPoint);
-	virtual void MouseMoved(BPoint, uint32 transit, const BMessage *message);
-	virtual void MouseUp(BPoint);
-	virtual void Draw(BRect);
-	
+virtual	void			MouseDown(BPoint);
+virtual	void			MouseMoved(BPoint, uint32 transit, const BMessage *message);
+virtual	void			MouseUp(BPoint);
+virtual	void			Draw(BRect);
+
 private:
-	bool fMouseDown;
-	bool fMouseInView;
-	const Model *fModel;
-	BString fString;
-	BFont fFont;
+		bool			fMouseDown;
+		bool			fMouseInView;
+		const Model		*fModel;
+		BString			fString;
+		BFont			fFont;
 };
 
 class AttributeView : public BView {	
 public:
-	AttributeView(BRect, Model *);
-	~AttributeView();
+						AttributeView(BRect, Model *, BObjectList<entry_ref> *refs = NULL);
+						~AttributeView();
 
+virtual	void			ResizeToPreferred();
+		void			ModelChanged(Model *, BMessage *);
+		void			ReLinkTargetModel(Model *);
+		void			BeginEditingTitle();
+		void			FinishEditingTitle(bool);
+		float			CurrentFontHeight(float size = -1);
 
-	void ModelChanged(Model *, BMessage *);
-	void ReLinkTargetModel(Model *);
-	void BeginEditingTitle();
-	void FinishEditingTitle(bool);
-	float CurrentFontHeight(float size = -1);
+		BTextView		*TextView() { return fTitleEditView; };
 
-	BTextView *TextView()
-		{ return fTitleEditView; }
+static	filter_result	TextViewFilter(BMessage *, BHandler **, BMessageFilter *);
 
-	static filter_result TextViewFilter(BMessage *, BHandler **, BMessageFilter *);
-
-	off_t LastSize() const;
-	void SetLastSize(off_t);
+		off_t			LastSize() const;
+		void			SetLastSize(off_t);
 	
-	void SetSizeStr(const char *);
+		void			SetSizeStr(const char *);
 
-	status_t BuildContextMenu(BMenu *parent);
+		status_t		BuildContextMenu(BMenu *parent);
 
-	void SetPermissionsSwitchState(int32 state);
+		void			SetPermissionsSwitchState(int32 state);
+	
+		void			SetRefs(BObjectList<entry_ref> *refs);
 
 protected:
-	virtual void MouseDown(BPoint);
-	virtual void MouseMoved(BPoint, uint32, const BMessage *);
-	virtual void MouseUp(BPoint);
-	virtual void MessageReceived(BMessage *);
-	virtual void AttachedToWindow();
-	virtual void Draw(BRect);
-	virtual void Pulse();
-	virtual void MakeFocus(bool);
-	virtual void WindowActivated(bool);
+virtual	void			MouseDown(BPoint);
+virtual	void			MouseMoved(BPoint, uint32, const BMessage *);
+virtual	void			MouseUp(BPoint);
+virtual	void			MessageReceived(BMessage *);
+virtual	void			AttachedToWindow();
+virtual	void			Draw(BRect);
+virtual	void			Pulse();
+virtual	void			MakeFocus(bool);
+virtual	void			WindowActivated(bool);
 
 private:
-	void InitStrings(const Model *);
-	void CheckAndSetSize();
-	
-	BString fPathStr;
-	BString fLinkToStr;
-	BString fSizeStr;
-	BString fModifiedStr;
-	BString fCreatedStr;
-	BString fDescStr;
+		void			InitStrings(const Model *);
+		void			CheckAndSetSize();
 
-	off_t fFreeBytes;
-	off_t fLastSize;
-	
-	BRect fPathRect;
-	BRect fLinkRect;
-	BRect fTitleRect;
-	BRect fIconRect;
-	BRect fSizeRect;
-	BPoint fClickPoint;
-	float fDivider;
-	
-	BMenuField *fPreferredAppMenu;
-	Model *fModel;
-	Model *fIconModel;
-	BBitmap *fIcon;
-	bool fMouseDown;
-	bool fDragging;
-	bool fDoubleClick;
-	track_state fTrackingState;
-	bool fIsDropTarget;
-	BTextView *fTitleEditView;
-	PaneSwitch *fPermissionsSwitch;
-	BWindow *fPathWindow;
-	BWindow *fLinkWindow;
-	typedef BView _inherited;
+		BString			fPathStr;
+		BString			fLinkToStr;
+		BString			fSizeStr;
+		BString			fModifiedStr;
+		BString			fCreatedStr;
+		BString			fDescStr;
+
+		BButton			*fButton;
+
+		off_t			fFreeBytes;
+		off_t			fLastSize;
+
+		BRect			fPathRect;
+		BRect			fLinkRect;
+		BRect			fTitleRect;
+		BRect			fIconRect;
+		BRect			fSizeRect;
+		BPoint			fClickPoint;
+		float			fDivider;
+
+		BMenuField		*fPreferredAppMenu;
+		Model			*fModel;
+		Model			*fIconModel;
+		BBitmap			*fIcon;
+		bool			fMouseDown;
+		bool			fDragging;
+		bool			fDoubleClick;
+		track_state		fTrackingState;
+		bool			fIsDropTarget;
+		BTextView		*fTitleEditView;
+		PaneSwitch		*fPermissionsSwitch;
+		BWindow			*fPathWindow;
+		BWindow			*fLinkWindow;
+		bool			fMultiple;
+		bool			fExpanded;
+		int32			fCount;
+		BObjectList<entry_ref>	*fRefs;
+
+typedef	BView			_inherited;
 };
 
 class BInfoWindow : public BWindow {
 public:
-	BInfoWindow(Model *, int32 groupIndex, LockingList<BWindow> *list = NULL);
-	~BInfoWindow();
+						BInfoWindow(Model *, int32 groupIndex, LockingList<BWindow> *list = NULL);
+						// The BMessage constructor can only be used to open a multiple-file-info
+						BInfoWindow(BMessage *, int32 groupIndex, LockingList<BWindow> *list = NULL);
+						~BInfoWindow();
 
-	virtual bool IsShowing(const node_ref *) const;
-	Model *TargetModel() const;
-	void SetSizeStr(const char *);
-	bool StopCalc();
-	void OpenFilePanel(const entry_ref *);
+virtual	bool			IsShowing(const node_ref *) const;
+		Model			*TargetModel() const;
+		void			SetSizeStr(const char *);
+		bool			StopCalc();
+		void			OpenFilePanel(const entry_ref *);
 
-	static void GetSizeString(BString &result, off_t size, int32 fileCount);
+static	void			GetSizeString(BString &result, off_t size, int32 fileCount = 0, int32 dirCount = 0, int32 linkCount = 0, bool multiple = false);
 
 protected:
-	virtual void Quit();
-	virtual void MessageReceived(BMessage *);
-	virtual void Show();
+virtual	void			Quit();
+virtual	void			MessageReceived(BMessage *);
+virtual	void			Show();
 
 private:
-	static BRect InfoWindowRect(bool displayingSymlink);
-	static int32 CalcSize(void *); 
+static	BRect			InfoWindowRect(bool displayingSymlink);
+static	int32			CalcSize(void *);
+static	int32			CalcMultipleSize(void *); 
 
-	Model *fModel;
-	volatile bool fStopCalc;
-	int32 fIndex; 				// tells where it lives with respect to other
-	thread_id fCalcThreadID;
-	LockingList<BWindow> *fWindowList;
-	FilePermissionsView *fPermissionsView;
-	AttributeView *fAttributeView;
-	BFilePanel *fFilePanel;
-	bool fFilePanelOpen;
+		Model			*fModel;
+volatile bool			fStopCalc;
+		int32			fIndex; // tells where it lives with respect to other
+		thread_id		fCalcThreadID;
+		LockingList<BWindow>	*fWindowList;
+		FilePermissionsView		*fPermissionsView;
+		AttributeView	*fAttributeView;
+		BFilePanel		*fFilePanel;
+		bool			fFilePanelOpen;
+		bool			fMultiple;
+		BMessage		*fMessage;
+		BObjectList<entry_ref>	*fRefs;
 
-	typedef BWindow _inherited;
+typedef	BWindow			_inherited;
 };
 
 

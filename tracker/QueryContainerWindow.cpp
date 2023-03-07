@@ -41,8 +41,10 @@ All rights reserved.
 
 #include "Attributes.h"
 #include "Commands.h"
+#include "LanguageTheme.h"
 #include "QueryContainerWindow.h"
 #include "QueryPoseView.h"
+
 
 BQueryContainerWindow::BQueryContainerWindow(LockingList<BWindow> *windowList,
 	uint32 containerWindowFlags, window_look look,
@@ -52,17 +54,20 @@ BQueryContainerWindow::BQueryContainerWindow(LockingList<BWindow> *windowList,
 {
 }
 
+
 BPoseView *
 BQueryContainerWindow::NewPoseView(Model *model, BRect rect, uint32)
 {
 	return new BQueryPoseView(model, rect);
 }
 
+
 BQueryPoseView *
 BQueryContainerWindow::PoseView() const
 {
 	return static_cast<BQueryPoseView *>(fPoseView);
 }
+
 
 void
 BQueryContainerWindow::CreatePoseView(Model *model)
@@ -75,62 +80,64 @@ BQueryContainerWindow::CreatePoseView(Model *model)
 	AddChild(fPoseView);
 }
 
+
 void
 BQueryContainerWindow::AddWindowMenu(BMenu *menu)
 {
 	BMenuItem *item;
 
-	item = new BMenuItem("Resize to Fit", new BMessage(kResizeToFit), 'Y');
+	item = new BMenuItem(LOCALE("Resize to Fit"), new BMessage(kResizeToFit), 'Y');
 	item->SetTarget(this);
 	menu->AddItem(item);
 
-	item = new BMenuItem("Select"B_UTF8_ELLIPSIS, new BMessage(kShowSelectionWindow), 'A', B_SHIFT_KEY);
+	item = new BMenuItem(LOCALE("Select"B_UTF8_ELLIPSIS), new BMessage(kShowSelectionWindow), 'A', B_SHIFT_KEY);
 	item->SetTarget(PoseView());
 	menu->AddItem(item);
 
-	item = new BMenuItem("Select All", new BMessage(B_SELECT_ALL), 'A');
+	item = new BMenuItem(LOCALE("Select All"), new BMessage(B_SELECT_ALL), 'A');
 	item->SetTarget(PoseView());
 	menu->AddItem(item);
 
-	item = new BMenuItem("Invert Selection", new BMessage(kInvertSelection), 'S');
+	item = new BMenuItem(LOCALE("Invert Selection"), new BMessage(kInvertSelection), 'S');
 	item->SetTarget(PoseView());
 	menu->AddItem(item);
 
-	item = new BMenuItem("Close", new BMessage(B_CLOSE_REQUESTED), 'W');
+	item = new BMenuItem(LOCALE("Close"), new BMessage(B_QUIT_REQUESTED), 'W');
 	item->SetTarget(this);
 	menu->AddItem(item);
 }
 
+
 void 
 BQueryContainerWindow::AddWindowContextMenus(BMenu *menu)
 {
-	BMenuItem *resizeItem = new BMenuItem("Resize to Fit",
-		new BMessage(kResizeToFit), 'Y');
+	BMenuItem *resizeItem = new BMenuItem(LOCALE("Resize to Fit"), new BMessage(kResizeToFit), 'Y');
 	menu->AddItem(resizeItem);
-	menu->AddItem(new BMenuItem("Select"B_UTF8_ELLIPSIS, new BMessage(kShowSelectionWindow), 'A', B_SHIFT_KEY));
-	menu->AddItem(new BMenuItem("Select All", new BMessage(B_SELECT_ALL), 'A'));
-	BMenuItem *closeItem = new BMenuItem("Close",
-		new BMessage(B_CLOSE_REQUESTED), 'W');
+	menu->AddItem(new BMenuItem(LOCALE("Select"B_UTF8_ELLIPSIS), new BMessage(kShowSelectionWindow), 'A', B_SHIFT_KEY));
+	menu->AddItem(new BMenuItem(LOCALE("Select All"), new BMessage(B_SELECT_ALL), 'A'));
+	BMenuItem *closeItem = new BMenuItem(LOCALE("Close"), new BMessage(B_QUIT_REQUESTED), 'W');
 	menu->AddItem(closeItem);
+
 	// target items as needed
 	menu->SetTargetForItems(PoseView());
 	closeItem->SetTarget(this);
 	resizeItem->SetTarget(this);
 }
 
+
 void 
 BQueryContainerWindow::SetUpDefaultState()
 {
 	BNode defaultingNode;
-	
+
 	WindowStateNodeOpener opener(this, true);
 		// this is our destination node, whatever it is for this window
 	if (!opener.StreamNode())
 		return;
-	
+
 	BString defaultStatePath(kQueryTemplates);
 	BString sanitizedType(PoseView()->SearchForType());
-	
+
 	defaultStatePath += '/';
 	int32 length = sanitizedType.Length();
 	char *buf = sanitizedType.LockBuffer(length);
@@ -149,7 +156,7 @@ BQueryContainerWindow::SetUpDefaultState()
 	}
 
 	// copy over the attributes
-	
+
 	// set up a filter of the attributes we want copied
 	const char *allowAttrs[] = {
 		kAttrWindowFrame,
@@ -166,6 +173,7 @@ BQueryContainerWindow::SetUpDefaultState()
 	AttributeStreamFileNode fileNode(&defaultingNode);
 	*opener.StreamNode() << memoryNode << filter << fileNode;
 }
+
 
 bool 
 BQueryContainerWindow::ActiveOnDevice(dev_t device) const

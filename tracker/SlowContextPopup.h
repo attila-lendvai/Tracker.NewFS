@@ -71,7 +71,7 @@ public:
 		const BMessenger *target, const BMessage *dragMessage);
 
 	const bool IsShowing() const;
-		
+	
 protected:
 	virtual bool AddDynamicItem(add_state state);
 	virtual bool StartBuildingItemList();

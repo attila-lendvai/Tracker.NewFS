@@ -41,6 +41,7 @@ All rights reserved.
 
 #include "Attributes.h"
 #include "Commands.h"
+#include "ExtendedIcon.h"
 #include "PoseView.h"
 #include "Utilities.h"
 #include "ViewState.h"
@@ -124,11 +125,11 @@ BColumn::InstantiateFromStream(BMallocIO *stream, bool endianSwap)
 		version = SwapInt32(version);
 	}
 
-	// PRINT(("validating key %x, version %d\n", key, version));
+	PRINT(("validating key %x, version %d\n", key, version));
 	if (!ValidateStream(stream, key, version)) 
 		return 0;
 
-	// PRINT(("instantiating column, %s\n", endianSwap ? "endian swapping," : ""));
+	PRINT(("instantiating column, %s\n", endianSwap ? "endian swapping," : ""));
 	BColumn *result = new BColumn(stream, endianSwap);
 	
 	// sanity-check the resulting column
@@ -191,7 +192,7 @@ BColumn::ArchiveToStream(BMallocIO *stream) const
 	int32 version = kColumnStateArchiveVersion;
 	stream->Write(&version, sizeof(int32));
 
-	// PRINT(("ArchiveToStream column, key %x, version %d\n", key, version));
+	PRINT(("ArchiveToStream column, key %x, version %d\n", key, version));
 
 	StringToStream(&fTitle, stream);
 	stream->Write(&fOffset, sizeof(float));
@@ -230,11 +231,13 @@ const char *kViewStatePrimarySortTypeName = "ViewState:fPrimarySortType";
 const char *kViewStateSecondarySortAttrName = "ViewState:fSecondarySortAttr";
 const char *kViewStateSecondarySortTypeName = "ViewState:fSecondarySortType";
 const char *kViewStateReverseSortName = "ViewState:fReverseSort";
+const char *kViewStateIconSizeName = "ViewState:fIconSize";
 
 BViewState::BViewState()
 {
 	fViewMode = kListMode;
 	fLastIconMode = 0;
+	fIconSize = 32;
 	fListOrigin.Set(0, 0);
 	fIconOrigin.Set(0, 0);
 	fPrimarySortAttr = AttrHashString(kAttrStatName, B_STRING_TYPE);
@@ -256,11 +259,13 @@ BViewState::BViewState(BMallocIO *stream, bool endianSwap)
 	stream->Read(&fSecondarySortAttr, sizeof(uint32));
 	stream->Read(&fSecondarySortType, sizeof(uint32));
 	stream->Read(&fReverseSort, sizeof(bool));
+	stream->Read(&fIconSize, sizeof(uint32));
 	
 	if (endianSwap) {
 		PRINT(("endian swapping view state\n"));
 		fViewMode = B_SWAP_INT32(fViewMode);
 		fLastIconMode = B_SWAP_INT32(fLastIconMode);
+		fIconSize = B_SWAP_INT32(fIconSize);
 		swap_data(B_POINT_TYPE, &fListOrigin, sizeof(fListOrigin), B_SWAP_ALWAYS);
 		swap_data(B_POINT_TYPE, &fIconOrigin, sizeof(fIconOrigin), B_SWAP_ALWAYS);
 		fPrimarySortAttr = B_SWAP_INT32(fPrimarySortAttr);
@@ -268,6 +273,8 @@ BViewState::BViewState(BMallocIO *stream, bool endianSwap)
 		fPrimarySortType = B_SWAP_INT32(fPrimarySortType);
 		fSecondarySortType = B_SWAP_INT32(fSecondarySortType);
 	}
+	
+	fIconSize = exiconsize[exiconindexfor(fIconSize)]; // assure a sane state
 	fStateNeedsSaving = false;
 }
 
@@ -282,7 +289,9 @@ BViewState::BViewState(const BMessage &message)
 	message.FindInt32(kViewStateSecondarySortAttrName, (int32 *)&fSecondarySortAttr);
 	message.FindInt32(kViewStateSecondarySortTypeName, (int32 *)&fSecondarySortType);
 	message.FindBool(kViewStateReverseSortName, &fReverseSort);
+	message.FindInt32(kViewStateIconSizeName, (int32 *)&fIconSize);
 	
+	fIconSize = exiconsize[exiconindexfor(fIconSize)]; // assure a sane state
 	fStateNeedsSaving = false;
 }
 
@@ -304,6 +313,7 @@ BViewState::ArchiveToStream(BMallocIO *stream) const
 	stream->Write(&fSecondarySortAttr, sizeof(uint32));
 	stream->Write(&fSecondarySortType, sizeof(uint32));
 	stream->Write(&fReverseSort, sizeof(bool));
+	stream->Write(&fIconSize, sizeof(uint32));
 }
 
 
@@ -321,6 +331,7 @@ BViewState::ArchiveToMessage(BMessage &message) const
 	message.AddInt32(kViewStateSecondarySortAttrName, static_cast<int32>(fSecondarySortAttr));
 	message.AddInt32(kViewStateSecondarySortTypeName, static_cast<int32>(fSecondarySortType));
 	message.AddBool(kViewStateReverseSortName, fReverseSort);
+	message.AddInt32(kViewStateIconSizeName, static_cast<int32>(fIconSize));
 }
 
 
@@ -346,10 +357,14 @@ BViewState::InstantiateFromStream(BMallocIO *stream, bool endianSwap)
 	if ((result->fViewMode != kListMode
 			&& result->fViewMode != kIconMode
 			&& result->fViewMode != kMiniIconMode
+			&& result->fViewMode != kHideIconMode
+			&& result->fViewMode != kScaleIconMode
 			&& result->fViewMode != 0)
 		|| (result->fLastIconMode != kListMode
 			&& result->fLastIconMode != kIconMode
 			&& result->fLastIconMode != kMiniIconMode
+			&& result->fLastIconMode != kHideIconMode
+			&& result->fLastIconMode != kScaleIconMode
 			&& result->fLastIconMode != 0)) {
 		
 		PRINT(("Bad data instantiating ViewState, view mode %x, lastIconMode %x\n",
@@ -384,12 +399,16 @@ BViewState::InstantiateFromMessage(const BMessage &message)
 	if ((result->fViewMode != kListMode
 			&& result->fViewMode != kIconMode
 			&& result->fViewMode != kMiniIconMode
+			&& result->fViewMode != kHideIconMode
+			&& result->fViewMode != kScaleIconMode
 			&& result->fViewMode != 0)
 		|| (result->fLastIconMode != kListMode
 			&& result->fLastIconMode != kIconMode
 			&& result->fLastIconMode != kMiniIconMode
+			&& result->fLastIconMode != kHideIconMode
+			&& result->fLastIconMode != kScaleIconMode
 			&& result->fLastIconMode != 0)) {
-		
+	
 		PRINT(("Bad data instantiating ViewState, view mode %x, lastIconMode %x\n",
 			result->fViewMode, result->fLastIconMode));
 

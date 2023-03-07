@@ -41,6 +41,7 @@ All rights reserved.
 #include <Mime.h>
 #include <image.h>
 
+#include "Defines.h"
 #include "TrackerIcons.h"
 
 class BBitmap;
@@ -95,6 +96,9 @@ enum {
 	kResBackNavActiveSel = R_ResBackNavActiveSel,
 	kResForwNavActiveSel = R_ResForwNavActiveSel,
 	kResUpNavActiveSel = R_ResUpNavActiveSel,
+	kResHomeNavActive = R_ResHomeNavActive,
+	kResHomeNavActiveSel = R_ResHomeNavActiveSel,
+	kResHomeNavInactive = R_ResHomeNavInactive,
 	kResShareIcon = R_ShareIcon
 };
 
@@ -141,11 +145,7 @@ private:
 
  		
 
-extern
-#if !B_BEOS_VERSION_DANO
-_IMPEXP_TRACKER
-#endif
-BImageResources* GetTrackerResources();
+extern _IMPEXP_TRACKER BImageResources* GetTrackerResources();
 
 } // namespace BPrivate
 

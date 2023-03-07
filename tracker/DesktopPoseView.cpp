@@ -169,8 +169,7 @@ bool
 DesktopPoseView::FSNotification(const BMessage *message)
 {
 	dev_t device;
-	TrackerSettings settings;
-
+	
 	switch (message->FindInt32("opcode")) {
 		case B_DEVICE_MOUNTED:
 			{
@@ -178,15 +177,16 @@ DesktopPoseView::FSNotification(const BMessage *message)
 					break;
 				
 				ASSERT(TargetModel());
-				if (settings.MountVolumesOntoDesktop()) {
+				if (gTrackerSettings.MountVolumesOntoDesktop()) {
 					// place an icon for the volume onto the desktop
 					BVolume volume(device);
 					if (volume.InitCheck() == B_OK
-						&& !volume.IsShared() || settings.MountSharedVolumesOntoDesktop())
+						&& !volume.IsShared()
+						|| gTrackerSettings.MountSharedVolumesOntoDesktop())
 						CreateVolumePose(&volume, true);
 				}
 
-				if (!settings.IntegrateNonBootBeOSDesktops())
+				if (!gTrackerSettings.IntegrateNonBootBeOSDesktops())
 					break;
 
 				BDirectory remoteDesktop;
@@ -229,7 +229,7 @@ DesktopPoseView::Represents(const node_ref *ref) const
 	//	When the Tracker is set up to integrate non-boot beos volumes,
 	//	it represents the home/Desktop folders of all beos volumes
 
-	if (TrackerSettings().IntegrateNonBootBeOSDesktops()) {
+	if (gTrackerSettings.IntegrateNonBootBeOSDesktops()) {
 		BDirectory deviceDesktop;
 		TFSContext::GetDesktopDir(deviceDesktop, ref->device);
 		node_ref nref;
@@ -352,7 +352,9 @@ DesktopPoseView::AdaptToVolumeChange(BMessage *message)
 			entryMessage.AddInt32("opcode", B_ENTRY_REMOVED);
 			entry_ref ref;
 			if (entry.GetRef(&ref) == B_OK) {
+				tracker->LockWindowList();
 				BContainerWindow *disksWindow = tracker->FindContainerWindow(&ref);
+				tracker->UnlockWindowList();
 				if (disksWindow) {
 					disksWindow->Lock();
 					disksWindow->Close();

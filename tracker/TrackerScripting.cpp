@@ -101,7 +101,7 @@ TTracker::ResolveSpecifier(BMessage *message, int32 index, BMessage *specifier,
 
 	int32 result = propertyInfo.FindMatch(message, index, specifier, form, property);
 	if (result < 0) {
-//		PRINT(("FindMatch result %d %s\n", result, strerror(result)));
+		PRINT(("FindMatch result %d %s\n", result, strerror(result)));
 		return _inherited::ResolveSpecifier(message, index, specifier,
 			form, property);
 	}

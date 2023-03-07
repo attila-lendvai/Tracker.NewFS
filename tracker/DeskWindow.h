@@ -72,7 +72,6 @@ public:
 	
 protected:
 	virtual	void AddWindowContextMenus(BMenu *);
-	void AddTrashContextMenu();
 	virtual BPoseView *NewPoseView(Model *, BRect, uint32);
 
 	virtual void WorkspaceActivated(int32, bool);
@@ -82,7 +81,6 @@ protected:
 private:
 	BShelf *fDeskShelf;
 		// shelf for replicant support
-	BPopUpMenu *fTrashContextMenu;
 
 	BRect fOldFrame;
 	

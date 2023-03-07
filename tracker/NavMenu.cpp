@@ -48,6 +48,7 @@ All rights reserved.
 #include <Screen.h>
 #include <VolumeRoster.h>
 #include <Volume.h>
+#include <Beep.h>
 
 #include "Attributes.h"
 #include "Commands.h"
@@ -56,11 +57,13 @@ All rights reserved.
 #include "Tracker.h"
 #include "TrackerSettings.h"
 #include "TFSContext.h"
+#include "LanguageTheme.h"
 #include "IconMenuItem.h"
 #include "MimeTypes.h"
 #include "NavMenu.h"
 #include "PoseView.h"
 #include "ThreadMagic.h"
+#include "TrackerFilters.h"
 #include "FunctionObject.h"
 #include "QueryPoseView.h"
 
@@ -274,7 +277,7 @@ BNavMenu::BNavMenu(const char *title, uint32 message, const BMessenger &messenge
 		fContainer(0),
 		fTypesList(list)
 {
-/*	TTrackerState::InitIfNeeded(); */
+	InitIconPreloader();
 
 	SetFont(be_plain_font);
 
@@ -453,8 +456,8 @@ BNavMenu::AddNextItem()
 		return false;
 	}
 	
-	// limit nav menus to 500 items only
-	if (fItemList->CountItems() > 500)
+	// limit nav menus to 5000 items only
+	if (fItemList->CountItems() > 5000)
 		return false;
 
 	BEntry entry;
@@ -462,12 +465,22 @@ BNavMenu::AddNextItem()
 		// we're finished
 		return false;
 	}
+	
+	if (gTrackerSettings.StaticFiltering()
+		&& !TrackerFilters().FilterEntry(&entry))
+		return true;
 
 	Model model(&entry, true);
 	if (model.InitCheck() != B_OK) {
-#if DEBUG
-		PRINT(("not showing hidden item %s, wouldn't open\n", model->Name()));
-#endif
+		PRINT(("not showing hidden item %s, wouldn't open\n", model.Name()));
+		return true;
+	}
+	
+	QueryEntryListCollection *queryContainer
+		= dynamic_cast<QueryEntryListCollection*>(fContainer);
+	if (queryContainer && !queryContainer->ShowResultsFromTrash()
+		&& TFSContext::IsInTrash(model.EntryRef())) {
+		// query entry is in trash and shall not be shown
 		return true;
 	}
 
@@ -484,12 +497,10 @@ BNavMenu::AddNextItem()
 	// ToDo:
 	// use more of PoseView's filtering here
 	if ((size == sizeof(poseInfo)
-			&& !BPoseView::PoseVisible(&model, &poseInfo, false))
+		&& !BPoseView::PoseVisible(&model, &poseInfo, false))
 		|| (fIteratingDesktop && !ShouldShowDesktopPose(fNavDir.device,
 			&model, &poseInfo))) {
-#if DEBUG
 		PRINT(("not showing hidden item %s\n", model.Name()));
-#endif
 		return true;
 	}
 
@@ -500,7 +511,7 @@ BNavMenu::AddNextItem()
 void 
 BNavMenu::AddOneItem(Model *model)
 {
-	BMenuItem *item = NewModelItem(model, &fMessage, fMessenger, false,
+	ModelMenuItem *item = NewModelItem(model, &fMessage, fMessenger, false,
 		dynamic_cast<BContainerWindow *>(fParentWindow),
 		fTypesList, &fTrackingHook);
 
@@ -551,9 +562,7 @@ BNavMenu::NewModelItem(Model *model, const BMessage *invokeMessage,
 				&poseInfo, false)) {
 				// link target sez it doesn't want to be visible,
 				// don't show the link
-#if DEBUG
 				PRINT(("not showing hidden item %s\n", model->Name()));
-#endif
 				delete newResolvedModel;
 				return 0;
 			}
@@ -570,8 +579,9 @@ BNavMenu::NewModelItem(Model *model, const BMessage *invokeMessage,
 	message->AddRef("refs", model->EntryRef());
 
 	// Truncate the name if necessary
-	BString truncatedString;
-	TruncString(be_plain_font, model->Name(), truncatedString, GetMaxMenuWidth());
+	BString truncatedString(model->Name());
+	be_plain_font->TruncateString(&truncatedString, B_TRUNCATE_END,
+									GetMaxMenuWidth());
 
 	ModelMenuItem *item = NULL;
 	if (!container || suppressFolderHierarchy) {
@@ -661,7 +671,7 @@ void
 BNavMenu::DoneBuildingItemList()
 {
 	// add sorted items to menu
-	if (TrackerSettings().SortFolderNamesFirst())
+	if (gTrackerSettings.SortFolderNamesFirst())
 		fItemList->SortItems(CompareFolderNamesFirstOne);
 	else
 		fItemList->SortItems(CompareOne);
@@ -676,7 +686,7 @@ BNavMenu::DoneBuildingItemList()
 			&& entry.GetParent(&entry) == B_OK) {
 			Model model(&entry, true);
 			BLooper *looper;
-			AddNavParentDir(&model,fMessage.what,fMessenger.Target(&looper));
+			AddNavParentDir(&model, fMessage.what, fMessenger.Target(&looper));
 		}
 	}
 
@@ -686,7 +696,7 @@ BNavMenu::DoneBuildingItemList()
 	fItemList->MakeEmpty();
 
 	if (!count) {
-		BMenuItem *item = new BMenuItem("Empty Folder", 0);
+		BMenuItem *item = new BMenuItem(LOCALE("Empty Folder"), 0);
 		item->SetEnabled(false);
 		AddItem(item);
 	}
@@ -730,7 +740,7 @@ BNavMenu::AddNavParentDir(const char *name,const Model *model,uint32 what,BHandl
 	menu->InitTrackingHook(fTrackingHook.fTrackingHook, &(fTrackingHook.fTarget),
 			fTrackingHook.fDragMessage);
 
-	BMenuItem *item = new SpecialModelMenuItem(model,menu);
+	ModelMenuItem *item = new SpecialModelMenuItem(model,menu);
 
 	BMessage *message = new BMessage(what);
 	message->AddRef("refs",model->EntryRef());
@@ -742,7 +752,7 @@ BNavMenu::AddNavParentDir(const char *name,const Model *model,uint32 what,BHandl
 void
 BNavMenu::AddNavParentDir(const Model *model, uint32 what, BHandler *target)
 {
-	AddNavParentDir("parent folder",model,what,target);
+	AddNavParentDir(LOCALE("parent folder"),model,what,target);
 }
 
 void
@@ -802,3 +812,36 @@ BNavMenu::SetTrackingHookDeep(BMenu *menu, bool (*func)(BMenu *, void *), void *
 			SetTrackingHookDeep(submenu, func, state);
 	}
 }
+
+#if 0
+void
+BNavMenu::AddAsyncItem(ModelMenuItem *item)
+{
+	if ((uint32)fAsyncDrawingList < 0x80000000)
+		fAsyncDrawingList = new BObjectList<ModelMenuItem>(10, false);
+	
+	printf("async: %x\n", fAsyncDrawingList);
+	fAsyncDrawingList->AddItem(item);
+	if (fAsyncDrawingThread)
+		return;
+	
+	fAsyncDrawingThread = spawn_thread(DrawAsync, "nav_menu_async_drawing", B_LOW_PRIORITY, (void *)this);
+	resume_thread(fAsyncDrawingThread);
+}
+
+int32
+BNavMenu::DrawAsync(void *arg)
+{
+	BNavMenu *source = (BNavMenu *)source;
+	if (!source)
+		return -1;
+	
+	while (source->fAsyncDrawingList->CountItems() > 0) {
+		ModelMenuItem *item = source->fAsyncDrawingList->RemoveItemAt(0);
+		ModelMenuItem::DrawIconAsync(item);
+	}
+	
+	source->fAsyncDrawingThread = 0;
+	return 0;
+}
+#endif

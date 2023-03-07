@@ -48,42 +48,47 @@ class AutoMounter;
 
 class AutomountSettingsPanel : public BBox {
 public:
-	AutomountSettingsPanel(BRect, BMessage *, AutoMounter *);
-	virtual ~AutomountSettingsPanel();
+							AutomountSettingsPanel(BRect, BMessage *,
+													AutoMounter *);
+virtual						~AutomountSettingsPanel();
+virtual	void				ResizeToPreferred();
 
 protected:
-	virtual void MessageReceived(BMessage *);
-	virtual void AttachedToWindow();
+virtual	void				MessageReceived(BMessage *);
+virtual	void				AttachedToWindow();
 	
 private:
-	void SendSettings(bool rescan);
-	
-	BRadioButton *initialDontMountCheck;
-	BRadioButton *initialMountAllBFSCheck;
-	BRadioButton *initialMountAllCheck;
-	BRadioButton *initialMountRestoreCheck;
+		void				SendSettings(bool rescan);
 
-	BRadioButton *scanningDisabledCheck;
-	BRadioButton *autoMountAllBFSCheck;
-	BRadioButton *autoMountAllCheck;
-	
-	BButton *fDone;
-	BButton *fMountAllNow;
+		BBox				*fInitialBox;
+		BRadioButton 		*fInitialDontMountCheck;
+		BRadioButton		*fInitialMountAllBFSCheck;
+		BRadioButton		*fInitialMountAllCheck;
+		BRadioButton		*fInitialMountRestoreCheck;
 
-	AutoMounter *fTarget;
+		BBox				*fAutoBox;
+		BRadioButton		*fScanningDisabledCheck;
+		BRadioButton		*fAutoMountAllBFSCheck;
+		BRadioButton		*fAutoMountAllCheck;
+
+		BButton				*fDone;
+		BButton				*fMountAllNow;
+
+		AutoMounter			*fTarget;
 	
-	typedef BBox _inherited;
+typedef	BBox				_inherited;
 };
 
 class AutomountSettingsDialog : public BWindow {
 public:
-	AutomountSettingsDialog(BMessage *settings, AutoMounter *);
-	virtual ~AutomountSettingsDialog();
+								AutomountSettingsDialog(BMessage *settings,
+														AutoMounter *);
+virtual							~AutomountSettingsDialog();
 
-	static void RunAutomountSettings(AutoMounter *);
+static	void					RunAutomountSettings(AutoMounter *);
 
 private:
-	static AutomountSettingsDialog *oneCopyOnly;
+static	AutomountSettingsDialog	*fOneCopyOnly;
 };
 
 } // namespace BPrivate

@@ -32,8 +32,8 @@ names are registered trademarks or trademarks of their respective holders.
 All rights reserved.
 */
 
+#include "Defines.h"
 #include <Mime.h>
-
 #include "AutoLock.h"
 #include "MimeTypeList.h"
 #include "ThreadMagic.h"

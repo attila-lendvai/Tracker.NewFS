@@ -52,6 +52,7 @@ All rights reserved.
 #include "TFSContext.h"
 #include "FunctionObject.h"
 #include "IconMenuItem.h"
+#include "LanguageTheme.h"
 #include "NavMenu.h"
 #include "PoseView.h"
 #include "QueryPoseView.h"
@@ -306,14 +307,14 @@ BSlowContextMenu::AddNextItem()
 
 	Model model(&entry, true);
 	if (model.InitCheck() != B_OK) {
-//		PRINT(("not showing hidden item %s, wouldn't open\n", model->Name()));
+		PRINT(("not showing hidden item %s, wouldn't open\n", model.Name()));
 		return true;
 	}
 
 	ssize_t size = -1;
 	PoseInfo poseInfo;
 
-	if (model.Node()) 
+	if (model.Node())
 		size = model.Node()->ReadAttr(kAttrPoseInfo, B_RAW_TYPE, 0,
 			&poseInfo, sizeof(poseInfo));
 
@@ -326,7 +327,7 @@ BSlowContextMenu::AddNextItem()
 			&& !BPoseView::PoseVisible(&model, &poseInfo, false))
 		|| (fIteratingDesktop && !ShouldShowDesktopPose(fNavDir.device,
 			&model, &poseInfo))) {
-//		PRINT(("not showing hidden item %s\n", model.Name()));
+		PRINT(("not showing hidden item %s\n", model.Name()));
 		return true;
 	}
 
@@ -408,8 +409,9 @@ BSlowContextMenu::NewModelItem(Model *model, const BMessage *invokeMessage,
 	message->AddRef("refs", model->EntryRef());
 
 	// Truncate the name if necessary
-	BString truncatedString;
-	TruncString(be_plain_font, model->Name(), truncatedString, BNavMenu::GetMaxMenuWidth());
+	BString truncatedString(model->Name());
+	be_plain_font->TruncateString(&truncatedString, B_TRUNCATE_END,
+									BNavMenu::GetMaxMenuWidth());
 
 	ModelMenuItem *item = NULL;
 	if (!container || suppressFolderHierarchy) {
@@ -479,7 +481,7 @@ void
 BSlowContextMenu::DoneBuildingItemList()
 {
 	// add sorted items to menu
-	if (TrackerSettings().SortFolderNamesFirst())
+	if (gTrackerSettings.SortFolderNamesFirst())
 		fItemList->SortItems(&BNavMenu::CompareFolderNamesFirstOne);
 	else
 		fItemList->SortItems(&BNavMenu::CompareOne);
@@ -491,7 +493,7 @@ BSlowContextMenu::DoneBuildingItemList()
 	fItemList->MakeEmpty();
 
 	if (!count) {
-		BMenuItem *item = new BMenuItem("Empty Folder", 0);
+		BMenuItem *item = new BMenuItem(LOCALE("Empty Folder"), 0);
 		item->SetEnabled(false);
 		AddItem(item);
 	}

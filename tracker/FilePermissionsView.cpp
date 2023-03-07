@@ -32,11 +32,11 @@ names are registered trademarks or trademarks of their respective holders.
 All rights reserved.
 */
 
+#include "Defines.h"
 #include <Beep.h>
-
-#include "FilePermissionsView.h"
-
 #include <stdlib.h>
+#include "FilePermissionsView.h"
+#include "LanguageTheme.h"
 
 const uint32 kPermissionsChanged = 'prch';
 const uint32 kNewOwnerEntered = 'nwow';
@@ -44,31 +44,75 @@ const uint32 kNewGrupEntered = 'nwgr';
 
 FilePermissionsView::FilePermissionsView(BRect rect, Model *model)
 	:	BView(rect, "FilePermissionsView", B_FOLLOW_LEFT_RIGHT, B_WILL_DRAW),
-		fModel(model)
+		fModel(model),
+		fRefs(NULL),
+		fMultiple(false)
 {
+	InitCommon();
+}
+
+FilePermissionsView::FilePermissionsView(BRect rect, BObjectList<entry_ref> *refs)
+	:	BView(rect, "MultipleFilePermissionsView", B_FOLLOW_LEFT_RIGHT, B_WILL_DRAW),
+		fModel(NULL),
+		fRefs(refs),
+		fMultiple(true)
+{
+	InitCommon();
+}
+
+void
+FilePermissionsView::ResizeToPreferred()
+{
+	ResizeTo(fGroupTextControl->Frame().right + 50, Bounds().Height());
+}
+
+void
+FilePermissionsView::InitCommon()
+{
+#if !ENABLE_LANGUAGE_THEMES
 	// Constants for the column labels: "User", "Group" and "Other".
 	const float kColumnLabelMiddle = 77, kColumnLabelTop = 6, kColumnLabelSpacing = 37,
 		kColumnLabelBottom = 20, kColumnLabelWidth = 35, kAttribFontHeight = 10;
+#else
+	const float kAttribFontHeight = 10, kColumnLabelTop = 6,
+		kColumnLabelBottom = 20;
+	// Variables based on the localised version of the Strings
+	BFont font = be_plain_font;
+	font.SetSize(kAttribFontHeight);
+	
+	float kColumnLabelMiddle = 0;
+	kColumnLabelMiddle = MAX(kColumnLabelMiddle, font.StringWidth(LOCALE("Read")));
+	kColumnLabelMiddle = MAX(kColumnLabelMiddle, font.StringWidth(LOCALE("Write")));
+	kColumnLabelMiddle = MAX(kColumnLabelMiddle, font.StringWidth(LOCALE("Execute")));
+	
+	float kColumnLabelWidth = 0;
+	kColumnLabelWidth = MAX(kColumnLabelWidth, font.StringWidth(LOCALE("Owner")));
+	kColumnLabelWidth = MAX(kColumnLabelWidth, font.StringWidth(LOCALE("Group")));
+	kColumnLabelWidth = MAX(kColumnLabelWidth, font.StringWidth(LOCALE("Other")));
+	
+	float kColumnLabelSpacing = kColumnLabelWidth + 2;
+	kColumnLabelMiddle += kColumnLabelWidth / 2 + 17;
+#endif
 	
 	BStringView *strView;
-
+	
 	strView = new BStringView(BRect(kColumnLabelMiddle - kColumnLabelWidth / 2,
 		kColumnLabelTop, kColumnLabelMiddle + kColumnLabelWidth / 2, kColumnLabelBottom),
-		"", "Owner");
+		"", LOCALE("Owner"));
 	AddChild(strView);
 	strView->SetAlignment(B_ALIGN_CENTER);
 	strView->SetFontSize(kAttribFontHeight);
-
+	
 	strView = new BStringView(BRect(kColumnLabelMiddle - kColumnLabelWidth / 2
 		+ kColumnLabelSpacing, kColumnLabelTop, kColumnLabelMiddle + kColumnLabelWidth / 2
-		+ kColumnLabelSpacing, kColumnLabelBottom), "", "Group");
+		+ kColumnLabelSpacing, kColumnLabelBottom), "", LOCALE("Group"));
 	AddChild(strView);
 	strView->SetAlignment(B_ALIGN_CENTER);
 	strView->SetFontSize(kAttribFontHeight);
-
+	
 	strView = new BStringView(BRect(kColumnLabelMiddle - kColumnLabelWidth / 2
 		+ 2 * kColumnLabelSpacing, kColumnLabelTop, kColumnLabelMiddle + kColumnLabelWidth / 2
-		+ 2 * kColumnLabelSpacing, kColumnLabelBottom), "", "Other");
+		+ 2 * kColumnLabelSpacing, kColumnLabelBottom), "", LOCALE("Other"));
 	AddChild(strView);
 	strView->SetAlignment(B_ALIGN_CENTER);
 	strView->SetFontSize(kAttribFontHeight);
@@ -79,35 +123,35 @@ FilePermissionsView::FilePermissionsView(BRect rect, Model *model)
 		- kColumnLabelWidth / 2 - 5, kRowLabelHeight = 14;
 	
 	strView = new BStringView(BRect(kRowLabelLeft, kRowLabelTop, kRowLabelRight,
-		kRowLabelTop + kRowLabelHeight), "", "Read");
+		kRowLabelTop + kRowLabelHeight), "", LOCALE("Read"));
 	AddChild(strView);
 	strView->SetAlignment(B_ALIGN_RIGHT);
 	strView->SetFontSize(kAttribFontHeight);
 	
 	strView = new BStringView(BRect(kRowLabelLeft, kRowLabelTop
 		+ kRowLabelVerticalSpacing, kRowLabelRight, kRowLabelTop
-		+ kRowLabelVerticalSpacing + kRowLabelHeight), "", "Write");
+		+ kRowLabelVerticalSpacing + kRowLabelHeight), "", LOCALE("Write"));
 	AddChild(strView);
 	strView->SetAlignment(B_ALIGN_RIGHT);
 	strView->SetFontSize(kAttribFontHeight);
-
+	
 	strView = new BStringView(BRect(kRowLabelLeft, kRowLabelTop
 		+ 2 * kRowLabelVerticalSpacing, kRowLabelRight, kRowLabelTop
-		+ 2 * kRowLabelVerticalSpacing + kRowLabelHeight), "", "Execute");
+		+ 2 * kRowLabelVerticalSpacing + kRowLabelHeight), "", LOCALE("Execute"));
 	AddChild(strView);
 	strView->SetAlignment(B_ALIGN_RIGHT);
 	strView->SetFontSize(kAttribFontHeight);
-
+	
 	// Constants for the 3x3 check box array.
 	const float kLeftMargin = kRowLabelRight + 15, kTopMargin = kRowLabelTop - 2,
 		kHorizontalSpacing = kColumnLabelSpacing, kVerticalSpacing = kRowLabelVerticalSpacing,
 		kCheckBoxWidth = 18, kCheckBoxHeight = 18;
-
+	
 	FocusCheckBox **checkBoxArray[3][3] =
 		{{ &fReadUserCheckBox, &fReadGroupCheckBox, &fReadOtherCheckBox },
 		 { &fWriteUserCheckBox, &fWriteGroupCheckBox, &fWriteOtherCheckBox },
 		 { &fExecuteUserCheckBox, &fExecuteGroupCheckBox, &fExecuteOtherCheckBox }};
-
+	
 	for (int32 x = 0; x < 3; x++)
 		for (int32 y = 0; y < 3; y++) {
 			*checkBoxArray[y][x] =
@@ -118,47 +162,56 @@ FilePermissionsView::FilePermissionsView(BRect rect, Model *model)
 					"", "",	new BMessage(kPermissionsChanged));
 			AddChild(*checkBoxArray[y][x]);
 		}
-
+	
+#if !ENABLE_LANGUAGE_THEMES
 	const float kTextControlLeft = 170, kTextControlRight = 270,
 		kTextControlTop = kColumnLabelTop, kTextControlHeight = 14, kTextControlSpacing = 16;
-
+#else
+	const float kTextControlTop = kColumnLabelTop, kTextControlHeight = 14, kTextControlSpacing = 16;
+	float kTextControlLeft = kColumnLabelMiddle + kColumnLabelWidth / 2 + 2 * kColumnLabelSpacing;
+	float kTextControlRight = 100;
+	kTextControlRight = MAX(kTextControlRight, font.StringWidth(LOCALE("Owner")));
+	kTextControlRight = MAX(kTextControlRight, font.StringWidth(LOCALE("Group")));
+	kTextControlRight += kTextControlLeft;
+#endif
 	strView = new BStringView(BRect(kTextControlLeft, kTextControlTop, kTextControlRight,
-		kTextControlTop + kTextControlHeight), "", "Owner");
-
+		kTextControlTop + kTextControlHeight), "", LOCALE("Owner"));
+	
 	strView->SetAlignment(B_ALIGN_CENTER);
 	strView->SetFontSize(kAttribFontHeight);
-
+	
 	AddChild(strView);
-
+	
 	fOwnerTextControl = new BTextControl(BRect(kTextControlLeft, kTextControlTop - 2
 		+ kTextControlSpacing, kTextControlRight, kTextControlTop + kTextControlHeight - 2
 		+ kTextControlSpacing), "",	"", "", new BMessage(kNewOwnerEntered));
-
+	
 	fOwnerTextControl->SetDivider(0);
-
+	
 	AddChild(fOwnerTextControl);
 	
 	strView = new BStringView(BRect(kTextControlLeft, kTextControlTop + 5
 		+ 2 * kTextControlSpacing, kTextControlRight, kTextControlTop + 2
-		+ 2 * kTextControlSpacing + kTextControlHeight), "", "Group");
-
+		+ 2 * kTextControlSpacing + kTextControlHeight), "", LOCALE("Group"));
+	
 	strView->SetAlignment(B_ALIGN_CENTER);
 	strView->SetFontSize(kAttribFontHeight);
 	
 	AddChild(strView);
-		
+	
 	fGroupTextControl = new BTextControl(BRect(kTextControlLeft, kTextControlTop
 		+ 3 * kTextControlSpacing, kTextControlRight, kTextControlTop
 		+ 3 * kTextControlSpacing + kTextControlHeight), "", "", "",
 		new BMessage(kNewGrupEntered));
-
+	
 	fGroupTextControl->SetDivider(0);
-
+	
 	AddChild(fGroupTextControl);
-
+	
 	SetViewColor(ui_color(B_PANEL_BACKGROUND_COLOR));
-
-	ModelChanged(model);
+	
+	if (!fMultiple)
+		ModelChanged(fModel);
 }
 
 
@@ -213,7 +266,7 @@ FilePermissionsView::ModelChanged(Model *model)
 					user << nodeOwner;
 				fOwnerTextControl->SetText(user.String());	
 			} else
-				fOwnerTextControl->SetText("Unknown");	
+				fOwnerTextControl->SetText(LOCALE("Unknown"));	
 			
 			if (node.GetGroup(&nodeGroup) == B_OK) {
 				BString group;
@@ -226,7 +279,7 @@ FilePermissionsView::ModelChanged(Model *model)
 					group << nodeGroup;
 				fGroupTextControl->SetText(group.String());	
 			} else
-				fGroupTextControl->SetText("Unknown");	
+				fGroupTextControl->SetText(LOCALE("Unknown"));	
 				
 			// Unless we're root, only allow the owner to transfer the ownership,
 			// i.e. disable text controls if uid:s doesn't match:

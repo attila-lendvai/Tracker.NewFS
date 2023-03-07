@@ -46,8 +46,9 @@ All rights reserved.
 #include "ContainerWindow.h"
 #include "DirMenu.h"
 #include "FSUtils.h"
-#include "TFSContext.h"
 #include "IconMenuItem.h"
+#include "LanguageTheme.h"
+#include "TFSContext.h"
 #include "Tracker.h"
 #include "Utilities.h"
 
@@ -68,6 +69,13 @@ BDirMenu::~BDirMenu()
 }
 
 void
+BDirMenu::MouseDown(BPoint where)
+{
+	printf("dirmenu mousedown");
+	BPopUpMenu::MouseDown(where);
+}
+
+void
 BDirMenu::Populate(const BEntry *startEntry, BWindow *originatingWindow,
 	bool includeStartEntry, bool select, bool reverse, bool addShortcuts)
 {
@@ -85,16 +93,15 @@ BDirMenu::Populate(const BEntry *startEntry, BWindow *originatingWindow,
 	
 		BEntry entry(*startEntry);
 		
-		TrackerSettings settings;
-		bool showDesktop = settings.DesktopFilePanelRoot();
-		bool showDisksIcon = settings.ShowDisksIcon();
+		bool desktopIsRoot = gTrackerSettings.DesktopFilePanelRoot();
+		bool showDisksIcon = gTrackerSettings.ShowDisksIcon();
 	
 		// might start one level above startEntry
 		if (!includeStartEntry) {
 			BDirectory parent;
 			BDirectory dir(&entry);
 			// if we're at the root directory skip "mnt" and go straight to "/"
-			if (!showDesktop && dir.InitCheck() == B_OK && dir.IsRootDirectory())
+			if (!desktopIsRoot && dir.InitCheck() == B_OK && dir.IsRootDirectory())
 				parent.SetTo("/");
 			else
 				entry.GetParent(&parent);
@@ -123,12 +130,12 @@ BDirMenu::Populate(const BEntry *startEntry, BWindow *originatingWindow,
 			
 			// if we're at the root directory skip "mnt" and go straight to "/"
 			BDirectory dir(&entry);
-			if (!showDesktop && dir.InitCheck() == B_OK && dir.IsRootDirectory()) {
+			if (!desktopIsRoot && dir.InitCheck() == B_OK && dir.IsRootDirectory()) {
 				hitRoot = true;
 				parent.SetTo("/");
 			}
 	
-			if (showDesktop) {
+			if (desktopIsRoot) {
 				BEntry root("/");
 				// warp from "/" to Desktop properly
 				if (entry == root) {
@@ -142,11 +149,11 @@ BDirMenu::Populate(const BEntry *startEntry, BWindow *originatingWindow,
 			}
 				
 			if (result == kReadAttrFailed || !info.fInvisible
-				|| (showDesktop && desktopEntry == entry)) 
+				|| (desktopEntry == entry)) 
 				AddItemToDirMenu(&entry, originatingWindow, reverse, addShortcuts);
 	
 			if (hitRoot) {
-				if (!showDesktop && showDisksIcon && *startEntry != "/")
+				if (!desktopIsRoot && showDisksIcon && *startEntry != "/")
 					AddDisksIconToMenu();
 				break;
 			}
@@ -167,11 +174,11 @@ BDirMenu::Populate(const BEntry *startEntry, BWindow *originatingWindow,
 			}
 		}
 	} catch (status_t err) {
-//		PRINT(("BDirMenu::Populate: caught error %s\n", strerror(err)));
+		PRINT(("BDirMenu::Populate: caught error %s\n", strerror(err)));
 		if (!CountItems()) {
-			BString error;
-			error << "Error [" << strerror(err) << "] populating menu";
-			AddItem(new BMenuItem(error.String(), 0));
+			char buffer[1024];
+			sprintf(buffer, LOCALE("Error populating menu (%s)."), strerror(err));
+			AddItem(new BMenuItem(buffer, 0));
 		}
 	}
 }
@@ -228,7 +235,7 @@ BDirMenu::AddDisksIconToMenu()
 	BMessage *message = new BMessage(fCommand);
 	message->AddRef(fEntryName.String(), model.EntryRef());
 
-	ModelMenuItem *item = new ModelMenuItem(&model, "Disks", message);
+	ModelMenuItem *item = new ModelMenuItem(&model, LOCALE("Disks"), message);
 
 	AddItem(item, 0);
 }

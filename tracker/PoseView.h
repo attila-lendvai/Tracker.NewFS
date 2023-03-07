@@ -53,6 +53,7 @@ All rights reserved.
 #include "Utilities.h"
 #include "ViewState.h"
 #include "TFSContext.h"
+#include "TrackerString.h"
 
 #include <Directory.h>
 #include <FilePanel.h>
@@ -78,11 +79,14 @@ class EntryListBase;
 const int32 kSmallStep = 10;
 const int32 kListOffset = 20;
 
+const uint32 kHideIconMode = 'Thic';
 const uint32 kMiniIconMode = 'Tmic';
 const uint32 kIconMode = 'Ticn';
 const uint32 kListMode = 'Tlst';
+const uint32 kScaleIconMode = 'Tsic'; // new mode for scaled icons
 
 const uint32 kCheckTypeahead = 'Tcty';
+const uint32 kCheckPendingFilter = 'Tcpf';
 
 class BPoseView : public BView {
 	public:
@@ -160,8 +164,7 @@ class BPoseView : public BView {
 		void SetAutoScroll(bool);
 		void SetPoseEditing(bool);
 
-		void UpdateVolumeIcon(dev_t device, bool forceUpdate = false);
-		void UpdateVolumeIcons();
+		void UpdateIcon(BPose *pose);
 
 		// file change notification handler
 		virtual bool FSNotification(const BMessage *);
@@ -197,6 +200,8 @@ class BPoseView : public BView {
 
 		void SetIconPoseHeight();
 		float IconPoseHeight() const;
+		uint32 IconSizeInt() const;
+		icon_size IconSize() const;
 
 		BRect Extent() const;
 		void GetLayoutInfo(uint32 viewMode, BPoint *grid, BPoint *offset) const;
@@ -308,11 +313,17 @@ class BPoseView : public BView {
 		bool HasPosesInClipboard();
 		void SetHasPosesInClipboard(bool hasPoses);
 		void SetPosesClipboardMode(uint32 clipboardMode);
-		void UpdatePosesClipboardModeFromClipboard();
+		void UpdatePosesClipboardModeFromClipboard(BMessage *clipboardReport = NULL);
 
 		// filtering
 		void SetRefFilter(BRefFilter *);
 		BRefFilter *RefFilter() const;
+
+		void SetDynamicFiltering(bool enabled);
+		void CheckDynamicFiltering();
+		void DoFiltering();
+		void HideNoneMatchingEntries(bool forceRebuild = false);
+		bool FilterPose(BPose *pose); // returns false if pose got filtered out
 
 		// access for mime types represented in the pose view
 		const char *MimeTypeAt(int32);
@@ -366,6 +377,13 @@ class BPoseView : public BView {
 		bool fTransparentSelection;
 		rgb_color fTransparentSelectionColor;
 		bool fIsDrawingSelectionRect;
+		
+		bool fDynamicFiltering;
+		TrackerStringExpressionType fDynamicFilteringExpressionType;
+		bool fDynamicFilteringInvert;
+		bool fDynamicFilteringIgnoreCase;
+		
+		bool fStaticFiltering;
 
 		bool IsWatchingDateFormatChange();
 		void StartWatchDateFormatChange();
@@ -471,7 +489,7 @@ class BPoseView : public BView {
 		void DrawViewCommon(BRect, bool recalculateText = false);
 
 		// pose list handling
-		int32 BSearchList(const BPose *, int32 *index);
+		int32 BSearchList(const BPose *, int32 *index, bool useVSList = false);
 		void InsertPoseAfter(BPose *pose, int32 *index, int32 orientation,
 			BRect *invalidRect);
 			// does a CopyBits to scroll poses making room for a new pose,
@@ -608,6 +626,7 @@ class BPoseView : public BView {
 		BObjectList<BColumn> *fColumnList;
 		BObjectList<BString> *fMimeTypeList;
 	  	bool fMimeTypeListIsDirty;
+	  	BStopWatch *watch;
 		BViewState *fViewState;
 		bool fStateNeedsSaving;
 		BCountView *fCountView;
@@ -634,6 +653,7 @@ class BPoseView : public BView {
 		const BPose *fSelectionPivotPose;
 		const BPose *fRealPivotPose;
 		BMessageRunner *fKeyRunner;
+		BMessageRunner *fFilterRunner;
 
 		bool fSelectionVisible : 1;
 		bool fMultipleSelection : 1;
@@ -654,13 +674,16 @@ class BPoseView : public BView {
 
 		BRect fStartFrame;
 		BRect fSelectionRect;
+		BString fLastExpression;
+		BString fCurrentExpression;
+		bigtime_t fLastFilterTime;
 
 		static float fFontHeight;
 		static font_height fFontInfo;
 		static BFont fCurrentFont;
 		static bigtime_t fLastKeyTime;
 		static char fMatchString[B_FILE_NAME_LENGTH];
-			// used for typeahead - should be replaced by a typeahead state
+		// used for typeahead - should be replaced by a typeahead state
 
 		// TODO: Get rid of this.
 		static _BWidthBuffer_ *fWidthBuf;
@@ -727,6 +750,18 @@ inline float
 BPoseView::IconPoseHeight() const
 {
 	return fIconPoseHeight;
+}
+
+inline uint32
+BPoseView::IconSizeInt() const
+{
+	return fViewState->IconSize();
+}
+
+inline icon_size
+BPoseView::IconSize() const
+{
+	return (icon_size)fViewState->IconSize();
 }
 
 inline PoseList *
@@ -876,13 +911,13 @@ BPoseView::IndexOfColumn(const BColumn* column) const
 inline int32
 BPoseView::IndexOfPose(const BPose *pose) const
 {
-	return fPoseList->IndexOf(pose);
+	return (ViewMode() == kListMode ? fVSPoseList : fPoseList)->IndexOf(pose);
 }
 
 inline BPose *
 BPoseView::PoseAtIndex(int32 index) const
 {
-	return fPoseList->ItemAt(index);
+	return (ViewMode() == kListMode ? fVSPoseList : fPoseList)->ItemAt(index);
 }
 
 inline BColumn *
@@ -906,7 +941,7 @@ BPoseView::LastColumn() const
 inline int32
 BPoseView::CountItems() const
 {
-	return fPoseList->CountItems();
+	return (ViewMode() == kListMode ? fVSPoseList : fPoseList)->CountItems();
 }
 
 inline void
@@ -990,21 +1025,41 @@ BHScrollBar::SetTitleView(BView *view)
 inline BPose *
 BPoseView::FindPose(const Model *model, int32 *index) const
 {
-	return fPoseList->FindPose(model, index);
+	return (ViewMode() == kListMode ? fVSPoseList : fPoseList)->FindPose(model, index);
 }
 
 inline BPose *
 BPoseView::FindPose(const node_ref *node, int32 *index) const
 {
-	return fPoseList->FindPose(node, index);
+	return (ViewMode() == kListMode ? fVSPoseList : fPoseList)->FindPose(node, index);
 }
 
 inline BPose *
 BPoseView::FindPose(const entry_ref *entry, int32 *index) const
 {
-	return fPoseList->FindPose(entry, index);
+	return (ViewMode() == kListMode ? fVSPoseList : fPoseList)->FindPose(entry, index);
 }
 
+inline bool
+BPoseView::FilterPose(BPose *pose)
+{
+	TrackerString name = pose->TargetModel()->Name();
+	return name.Matches(fCurrentExpression.String(), !fDynamicFilteringIgnoreCase, fDynamicFilteringExpressionType) ^ fDynamicFilteringInvert;
+}
+
+inline void
+BPoseView::CheckDynamicFiltering()
+{
+	if (IsFilePanel() || TargetModel()->IsQuery()) {
+		fDynamicFiltering = false;
+	} else {
+		if (!gTrackerSettings.SingleWindowBrowse()
+			|| !gTrackerSettings.ShowNavigator())
+			fDynamicFiltering = false;
+	}
+	
+	SetDynamicFiltering(ViewMode() != kListMode || fDynamicFiltering);
+}
 
 } // namespace BPrivate
 

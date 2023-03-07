@@ -32,8 +32,9 @@ names are registered trademarks or trademarks of their respective holders.
 All rights reserved.
 */
 
-#if DEBUG
+#if somethingthatisntDEBUG
 
+#include "Defines.h"
 #include "Tests.h"
 
 #include <Debug.h>
@@ -193,7 +194,7 @@ IconSpewer::DrawSomeNew()
 			if (model.IsDirectory()) 
 				entry.GetPath(&currentPath);
 
-			IconCache::iconCache->Draw(&model, view, BPoint(column * (kIconSize + 2),
+			IconCache::sIconCache->Draw(&model, view, BPoint(column * (kIconSize + 2),
 				row * (kIconSize + 2)), kNormalIcon, kIconSize, true);
 			target->Unlock();
 			numDrawn++;

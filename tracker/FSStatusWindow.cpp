@@ -1,41 +1,44 @@
-// Open Tracker License
-//
-// Terms and Conditions
-//
-// Copyright (c) 1991-2000, Be Incorporated. All rights reserved.
-//
-// Permission is hereby granted, free of charge, to any person obtaining a copy of
-// this software and associated documentation files (the "Software"), to deal in
-// the Software without restriction, including without limitation the rights to
-// use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
-// of the Software, and to permit persons to whom the Software is furnished to do
-// so, subject to the following conditions:
-// 
-// The above copyright notice and this permission notice applies to all licensees
-// and shall be included in all copies or substantial portions of the Software.
-// 
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF TITLE, MERCHANTABILITY,
-// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
-// BE INCORPORATED BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
-// AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION
-// WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-//
-// Except as contained in this notice, the name of Be Incorporated shall not be
-// used in advertising or otherwise to promote the sale, use or other dealings in
-// this Software without prior written authorization from Be Incorporated.
-// 
-// Tracker(TM), Be(R), BeOS(R), and BeIA(TM) are trademarks or registered trademarks
-// of Be Incorporated in the United States and other countries. Other brand product
-// names are registered trademarks or trademarks of their respective holders.
-// All rights reserved.
+/*
+Open Tracker License
+
+Terms and Conditions
+
+Copyright (c) 1991-2000, Be Incorporated. All rights reserved.
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+of the Software, and to permit persons to whom the Software is furnished to do
+so, subject to the following conditions:
+
+The above copyright notice and this permission notice applies to all licensees
+and shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF TITLE, MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+BE INCORPORATED BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
+AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION
+WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+Except as contained in this notice, the name of Be Incorporated shall not be
+used in advertising or otherwise to promote the sale, use or other dealings in
+this Software without prior written authorization from Be Incorporated.
+
+Tracker(TM), Be(R), BeOS(R), and BeIA(TM) are trademarks or registered trademarks
+of Be Incorporated in the United States and other countries. Other brand product
+names are registered trademarks or trademarks of their respective holders.
+All rights reserved.
+*/
 
 #include "TFSContext.h"
 #include "Attributes.h"
-#include "Commands.h"
-#include "Tracker.h"
 #include "Bitmaps.h"
+#include "Commands.h"
 #include "FSStatusWindow.h"
+#include "LanguageTheme.h"
+#include "Tracker.h"
 
 #include <Autolock.h>
 #include <Screen.h>
@@ -86,7 +89,7 @@ bool				FSStatusWindow::StatusView::ProgressView	:: sDefaultVerboseState = false
 
 
 
-FSStatusWindow::FSStatusWindow() : inherited(BRect(0, 0, kStatusViewPreferredWidth, 100), "Tracker Status",
+FSStatusWindow::FSStatusWindow() : inherited(BRect(0, 0, kStatusViewPreferredWidth, 100), LOCALE("Tracker Status"),
 											B_FLOATING_WINDOW_LOOK, B_NORMAL_WINDOW_FEEL, // B_FLOATING_APP_WINDOW_FEEL,
 											B_NOT_CLOSABLE + B_NOT_V_RESIZABLE + B_NOT_ZOOMABLE, B_ALL_WORKSPACES),
 									mDragger(mContainer) {
@@ -107,14 +110,14 @@ FSStatusWindow::FSStatusWindow() : inherited(BRect(0, 0, kStatusViewPreferredWid
 //	mDragger.SetViewColor(B_TRANSPARENT_COLOR);
 }
 
-DEBUG_ONLY(
+#if DEBUG
 void
 FSStatusWindow::Show() {
 	ASSERT(mContainer.CountChildren() >= 0);
 	
 	inherited::Show();
 }
-)
+#endif
 
 void
 FSStatusWindow::Pack() {
@@ -188,10 +191,6 @@ FSStatusWindow::QuitRequested() {
 	return false;
 }
 
-
-
-
-
 void
 FSStatusWindow::ContainerView::initialize() {
 #if FS_USE_ELAPSED_TIME
@@ -230,7 +229,9 @@ FSStatusWindow::ContainerView::~ContainerView() {
 			
 			int32 count = CountChildren();
 			for (int32 i = 0;  i < count;  ++i) {
-				StatusView *sview = assert_cast<StatusView *>(ChildAt(i));
+				StatusView *sview = dynamic_cast<StatusView *>(ChildAt(i));
+				if (!sview)
+					continue;
 				sview -> RemoveSelf();
 				cview.AddChild(sview);
 			}
@@ -251,8 +252,11 @@ FSStatusWindow::ContainerView::ModifiersChanged() {
 	ASSERT(Window() -> IsLocked());
 
 	int32 count = CountChildren();
-	for (int32 i = 0;  i < count;  ++i)
-		assert_cast<StatusView *>(ChildAt(i)) -> ModifiersChanged();
+	for (int32 i = 0;  i < count;  ++i) {
+		StatusView *view = dynamic_cast<StatusView *>(ChildAt(i));
+		if (view)
+			view -> ModifiersChanged();
+	}
 }
 
 BArchivable *
@@ -265,7 +269,6 @@ FSStatusWindow::ContainerView::Instantiate(BMessage *in_msg) {
 			return &view;
 		}
 	} else {
-	
 		beep();		// XXX alert?
 	}
 	
@@ -274,38 +277,28 @@ FSStatusWindow::ContainerView::Instantiate(BMessage *in_msg) {
 
 status_t
 FSStatusWindow::ContainerView::Archive(BMessage *in_msg, bool in_deep) const {
-//	status_t rc = inherited::Archive(in_msg, in_deep);
-	
-//	rc |= in_msg -> AddString("add_on", kTrackerSignature);	// don't add signature to avoid auto-loading when dropped into another team
-//	rc |= in_msg -> AddString("class", kClassName);
-
 	inherited::Archive(in_msg, in_deep);
-	in_msg->AddString("add_on", kTrackerSignature);
-
+	
+	BString string;
+	if (in_msg->FindString("add_on", &string) == B_OK)
+		printf("add_on: %s\n", string.String());
+	//in_msg->AddString("add_on", kTrackerSignature);	// don't add signature to avoid auto-loading when dropped into another team
+	in_msg->AddString("class", kClassName);
 	in_msg->AddRect("bounds", Bounds());
-//	in_msg->AddInt32("face", OffscreenView->fFace);
-	
-if (find_instantiation_func(kClassName) != 0)	// XXX
-puts("ok");
-	
+
 	return 0;
 }
 
 status_t
 FSStatusWindow::CustomDragger::Archive(BMessage *msg, bool deep) {
-//	status_t rc = inherited::Archive(msg, deep);
-	
-//	rc |= msg -> AddString("add_on", kTrackerSignature);	// don't add signature to avoid auto-loading when dropped into another team
-//	rc |= msg -> AddString("class", kClassName);
-
 	inherited::Archive(msg, deep);
-	msg->AddString("add_on", kTrackerSignature);
-
-	msg->AddRect("bounds", Bounds());
 	
+	msg -> AddString("add_on", kTrackerSignature);	// don't add signature to avoid auto-loading when dropped into another team
+	msg -> AddString("class", kClassName);
+	msg->AddRect("bounds", Bounds());
+
 	return 0;
 }
-
 
 void
 FSStatusWindow::ContainerView::AllAttached() {
@@ -323,10 +316,10 @@ FSStatusWindow::ContainerView::AllAttached() {
 				gStatusWindow().Hide();
 			
 				for (int32 i = 0;  i < count;  ++i) {
-					StatusView &sview = dynamic_cast<StatusView &>(*cview.ChildAt(i));
-					if (&sview != 0) {
-						sview.RemoveSelf();
-						AddChild(&sview);
+					StatusView *view = dynamic_cast<StatusView *>(cview.ChildAt(i));
+					if (view) {
+						view->RemoveSelf();
+						AddChild(view);
 					}
 				}
 				Pack();
@@ -370,9 +363,12 @@ FSStatusWindow::ContainerView::CustomPulse() {
 	
 		int32 i, count = CountChildren();
 		for (i = 0;  i < count; ++i) {
-		
-			TFSContext &context(assert_cast<StatusView *>(ChildAt(i)) -> FSContext());
+			StatusView *view = dynamic_cast<StatusView *>(ChildAt(i));
+			if (!view)
+				continue;
 			
+			TFSContext &context(view -> FSContext());
+						
 			if (context.ElapsedTime() > kPopUpDelay) {
 				Window() -> Show();
 				if (context.HasDialogWindow())
@@ -411,8 +407,11 @@ FSStatusWindow::ContainerView::CustomPulse() {
 	}
 #endif
 	int32 count = CountChildren();
-	for (int32 i = 0;  i < count;  ++i)		// ??? will call BDragger::Pulse, but it should be harmless
-		assert_cast<StatusView *>(ChildAt(i)) -> CustomPulse();
+	for (int32 i = 0;  i < count;  ++i) {		// ??? will call BDragger::Pulse, but it should be harmless
+		StatusView *view = dynamic_cast<StatusView *>(ChildAt(i));
+		if (view)
+			view -> CustomPulse();
+	}
 }
 
 void
@@ -449,9 +448,11 @@ FSStatusWindow::ContainerView::Remove(const TFSContext &in_context) {
 	int32 i, count = CountChildren();
 	for (i = 0;  i < count; ++i) {
 	
-		BView *view = ChildAt(i);
+		StatusView *view = dynamic_cast<StatusView *>(ChildAt(i));
+		if (!view)
+			continue;
 		
-		if (*assert_cast<StatusView *>(view) == in_context) {
+		if (*view == in_context) {
 			RemoveChild(view);
 			delete view;
 			
@@ -487,7 +488,10 @@ FSStatusWindow::ContainerView::ShouldPause(const TFSContext &in_context) {
 		return false;
 		
 	for (int32 i = 0;  i < count;  ++i) {
-		StatusView *view = assert_cast<StatusView *>(ChildAt(i));
+		StatusView *view = dynamic_cast<StatusView *>(ChildAt(i));
+		if (!view)
+			continue;
+		
 		TFSContext &context = view -> FSContext();
 		
 		if (&context == &in_context) {
@@ -511,8 +515,11 @@ bool
 FSStatusWindow::ContainerView::AttemptToQuit() {
 	if (LockLooper()) {
 		int32 count = CountChildren();
-		for (int32 i = 0;  i < count; ++i)
-			assert_cast<StatusView *>(ChildAt(i)) -> Cancel();
+		for (int32 i = 0;  i < count; ++i) {
+			StatusView *view = dynamic_cast<StatusView *>(ChildAt(i));
+			if (view)
+				view -> Cancel();
+		}
 
 		UnlockLooper();
 	}
@@ -521,7 +528,6 @@ FSStatusWindow::ContainerView::AttemptToQuit() {
 
 void
 FSStatusWindow::ContainerView::Pack() {
-
 	ASSERT(Window() -> IsLocked());
 
 	mPackNeeded = false;
@@ -533,20 +539,20 @@ FSStatusWindow::ContainerView::Pack() {
 
 	int32 count = CountChildren();
 	for (int32 i = 0;  i < count;  ++i) {
-		BView *_view = ChildAt(i);
-		
-		StatusView &view = *assert_cast<StatusView *>(_view);
-		
-		if (view.ShouldShow() == false)
+		StatusView *view = dynamic_cast<StatusView *>(ChildAt(i));
+		if (!view)
 			continue;
 		
-		view.GetPreferredSize(&rect.right, &rect.bottom);	// ask view about its preferred size
+		if (view->ShouldShow() == false)
+			continue;
+		
+		view->GetPreferredSize(&rect.right, &rect.bottom);	// ask view about its preferred size
 		rect.right = our_bounds.right;						// force width to be our width
 		rect.top = total_height;
 		rect.bottom += rect.top;
-		view.ResizeTo(rect.Width(), rect.Height());
-		view.MoveTo(rect.LeftTop());
-		view.Show();
+		view->ResizeTo(rect.Width(), rect.Height());
+		view->MoveTo(rect.LeftTop());
+		view->Show();
 
 		total_height += rect.Height();						// sum up all width
 //		total_height = floor(total_height + 2.9);			// and leave space for the separator
@@ -567,6 +573,7 @@ void
 FSStatusWindow::ContainerView::RedrawDragger(int32 offset) {	// invalidate our last child to redraw the dragger
 	ASSERT(Window() -> IsLocked());
 	
+	return;
 	int32 count = CountChildren();
 	
 	if (count - offset > 0) {
@@ -613,8 +620,8 @@ FSStatusWindow::StatusView::StatusView(TFSContext &in_context) :
 								mLastDetailsUpdated(0),
 								mContext(in_context),
 								mProgressView(mContext),
-								mExpandButton(BRect(), "Details"),
-								mExpandStringView("Details"),
+								mExpandButton(BRect(), LOCALE("Details")),
+								mExpandStringView(LOCALE("Details")),
 								mStopButton(CustomButton::kStop, TFSContext::kCancel),
 								mPauseButton(CustomButton::kPause, TFSContext::kPause),
 								mSkipButton(CustomButton::kSkipRight, TFSContext::kSkipOperation),
@@ -776,7 +783,7 @@ FSStatusWindow::StatusView::DrawEstimatedTimeString(float ypos) {
 	SetLowColor(kStringLowColor);
 	SetHighColor(kStringHighColor);
 
-	DrawString("Time remaining:", point);
+	DrawString(LOCALE("Time remaining:"), point);
 
 	char buf[256];
 	
@@ -845,8 +852,8 @@ FSStatusWindow::StatusView::Draw(BRect in_rect) {
 
 		if (in_rect.Intersects(rect)  &&  mBitmap != 0) {
 		
+			SetDrawingMode(B_OP_OVER);
 			BRect bitmap_bounds = mBitmap -> Bounds();
-			
 			DrawBitmap(mBitmap, BPoint(	(rect.Width() - bitmap_bounds.Width()) / 2,
 										(rect.Height() - bitmap_bounds.Height()) / 2)
 								);
@@ -878,21 +885,21 @@ FSStatusWindow::StatusView::Draw(BRect in_rect) {
 
 			char buf[128];
 
-			DrawString("Time elapsed:", BPoint(mDetailsRect.right - 140, y));
+			DrawString(LOCALE("Time elapsed:"), BPoint(mDetailsRect.right - 140, y));
 			CreateTimeString(buf, mContext.ElapsedTime());
 			DrawString(buf, BPoint(mDetailsRect.right - 3 - StringWidth(buf), y));
 
 			y += sFontHeight;
 
 			if (mContext.WasMultithreadedCopy()) {
-				DrawString("Reader waiting:", BPoint(mDetailsRect.right - 140, y));
+				DrawString(LOCALE("Reader waiting:"), BPoint(mDetailsRect.right - 140, y));
 				CreateTimeString(buf, mContext.ReaderThreadWaiting(), true);
 				DrawString(buf, BPoint(mDetailsRect.right - 3 - StringWidth(buf), y));
 			}
 
 			float ruler = mDetailsRect.left + 100;
 			
-			DrawString("Copy speed:", BPoint(mDetailsRect.left + 3, y));
+			DrawString(LOCALE("Copy speed:"), BPoint(mDetailsRect.left + 3, y));
 
 			sprintf(buf, "%.2f MB/s", (float)mContext.mProgressInfo.mCurrentSize / (mContext.ElapsedTime()));
 			DrawString(buf, BPoint(ruler, y));
@@ -900,12 +907,12 @@ FSStatusWindow::StatusView::Draw(BRect in_rect) {
 			y += sFontHeight;
 
 			if (mContext.WasMultithreadedCopy()) {
-				DrawString("Writer waiting:", BPoint(mDetailsRect.right - 140, y));
+				DrawString(LOCALE("Writer waiting:"), BPoint(mDetailsRect.right - 140, y));
 				CreateTimeString(buf, mContext.WriterThreadWaiting(), true);
 				DrawString(buf, BPoint(mDetailsRect.right - 3 - StringWidth(buf), y));
 			}
 						
-			DrawString("Queue size:", BPoint(mDetailsRect.left + 3, y));
+			DrawString(LOCALE("Queue size:"), BPoint(mDetailsRect.left + 3, y));
 			TFSContext::GetSizeString(buf, mContext.TotalMemoryUsage(), 0);
 			DrawString(buf, BPoint(ruler, y));
 		}
@@ -1013,7 +1020,7 @@ FSStatusWindow::StatusView::MessageReceived(BMessage *in_msg) {
 		}
 		
 		case TFSContext::kCancel:
-			mProgressView.mStatusBar.SetText("Cancelling...");
+			mProgressView.mStatusBar.SetText(LOCALE("Cancelling"B_UTF8_ELLIPSIS));
 			mContext.Cancel();
 			break;
 	
@@ -1032,11 +1039,6 @@ FSStatusWindow::StatusView::MessageReceived(BMessage *in_msg) {
 			inherited::MessageReceived(in_msg);
 	}
 }
-
-
-
-
-
 
 FSStatusWindow::StatusView::ProgressView::ProgressView(TFSContext &in_context) :
 						inherited(BRect(0, 0, 10, 10), "Progress View", B_FOLLOW_LEFT_RIGHT, B_WILL_DRAW + B_FRAME_EVENTS),
@@ -1094,9 +1096,9 @@ FSStatusWindow::StatusView::ProgressView::SetOperationString() {
 	
 	if (mContext.IsPauseRequested()) {
 		if (mContext.IsPaused())
-			str.Append(" (Paused)");
+			str.Append(LOCALE(" (Paused)"));
 		else
-			str.Append(" (Pausing...)");
+			str.Append(LOCALE(" (Pausing)"B_UTF8_ELLIPSIS));
 	}
 	
 	mStatusBar.SetText(str.String());
@@ -1162,8 +1164,13 @@ FSStatusWindow::StatusView::ProgressView::CustomPulse() {
 #if B_BEOS_VERSION_DANO
 		mStatusBar.SetTo(info.TotalSizeProgress(), NULL, buf);
 #else
+#if 0
 		mStatusBar.fCurrent = info.TotalSizeProgress();			// XXX
 		mStatusBar._Draw(mStatusBar.Bounds(), true);
+#else
+		mStatusBar.Update(info.TotalSizeProgress() - mStatusBar.CurrentValue(),
+							NULL, buf); 
+#endif
 #endif
 	} else {
 	
@@ -1183,11 +1190,16 @@ FSStatusWindow::StatusView::ProgressView::CustomPulse() {
 #ifdef B_BEOS_VERSION_DANO
 		mStatusBar.SetTo(info.EntryProgress(), NULL, buf);
 #else
+#if 0
 		mStatusBar.fCurrent = info.EntryProgress();				// XXX
 		mStatusBar._Draw(mStatusBar.Bounds(), true);
+#else
+		mStatusBar.Update(info.TotalSizeProgress() - mStatusBar.CurrentValue(),
+							NULL, buf); 
+#endif
 #endif
 	}
-#if !B_BEOS_VERSION_DANO
+#if 0 //!B_BEOS_VERSION_DANO
 	mStatusBar.SetTrailingText(buf);
 #endif
 	

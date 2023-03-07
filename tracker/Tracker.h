@@ -35,6 +35,7 @@ All rights reserved.
 #ifndef	_TRACKER_H
 #define	_TRACKER_H
 
+#include "Defines.h"
 #include <Application.h>
 #include <Resources.h>
 #include <Entry.h>
@@ -140,6 +141,8 @@ public:
 
 	void ShowSettingsWindow();
 
+	bool LockWindowList();
+	void UnlockWindowList();
 	BContainerWindow *FindContainerWindow(const node_ref *, int32 number = 0) const;
 	BContainerWindow *FindContainerWindow(const entry_ref *, int32 number = 0) const;
 	BContainerWindow *FindParentContainerWindow(const entry_ref *) const;
@@ -147,6 +150,10 @@ public:
 
 	BClipboardRefsWatcher *ClipboardRefsWatcher() const;
 
+	status_t OpenRef(const entry_ref *, const node_ref *nodeToClose = NULL,
+		const node_ref *nodeToSelect = NULL, OpenSelector selector = kOpen,
+		const BMessage *messageToBundle = NULL);
+	
 protected:
 	// scripting
 	virtual BHandler *ResolveSpecifier(BMessage *, int32, BMessage *,
@@ -194,7 +201,8 @@ private:
 
 	void CloseAllWindows();
 	void CloseWindowAndChildren(const node_ref *);
-	void OpenInfoWindows(BMessage*);
+	void OpenInfoWindows(BMessage *);
+	void CloseInfoWindows(BMessage *);
 	void MoveRefsToTrash(const BMessage *);
 	void OpenContainerWindow(Model *, BMessage *refsList = NULL,
 		OpenSelector openSelector = kOpen, uint32 openFlags = 0,
@@ -208,10 +216,6 @@ private:
 
 	BDeskWindow *GetDeskWindow() const;
 
-	status_t OpenRef(const entry_ref *, const node_ref *nodeToClose = NULL,
-		const node_ref *nodeToSelect = NULL, OpenSelector selector = kOpen,
-		const BMessage *messageToBundle = NULL);
-	
 	MimeTypeList *fMimeTypeList;	
 	WindowList fWindowList;
 	BClipboardRefsWatcher *fClipboardRefsWatcher;

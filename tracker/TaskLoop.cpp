@@ -32,6 +32,7 @@ names are registered trademarks or trademarks of their respective holders.
 All rights reserved.
 */
 
+#include "Defines.h"
 #include <InterfaceDefs.h>
 
 #include "AutoLock.h"
@@ -133,11 +134,11 @@ RunWhenIdleTask::RunIfNeeded(bigtime_t currentTime)
 		return false;
 
 	fRunAfter = currentTime + fPeriod;
-	// PRINT(("runWhenIdle: runAfter %Ld, current time %Ld, period %Ld\n",
-	//	fRunAfter, currentTime, fPeriod));
+	PRINT(("runWhenIdle: runAfter %Ld, current time %Ld, period %Ld\n",
+			fRunAfter, currentTime, fPeriod));
 	
 	if (fState == kInitialDelay) {
-//		PRINT(("run when idle task - past intial delay\n"));
+		PRINT(("run when idle task - past intial delay\n"));
 		ResetIdleTimer(currentTime);
 	} else if (fState == kInIdleState && !StillIdle(currentTime)) {
 		fState = kInitialIdleWait;
@@ -190,13 +191,13 @@ RunWhenIdleTask::IsIdle(bigtime_t currentTime, float taskOverhead)
 	bool idle = true;
 	
 	if (load > kIdleTreshold) {
-//		PRINT(("not idle enough %f\n", load));
+		PRINT(("not idle enough %f\n", load));
 		idle = false;
 	} else if ((currentTime - fLastCPUTooBusyTime) < fIdleFor
 		|| idle_time() < fIdleFor) {
-//		PRINT(("load %f, not idle long enough %Ld, %Ld\n", load,
-//			currentTime - fLastCPUTooBusyTime,
-//			idle_time()));
+		PRINT(("load %f, not idle long enough %Ld, %Ld\n", load,
+			currentTime - fLastCPUTooBusyTime,
+			idle_time()));
 		idle = false;
 	}
 
@@ -375,7 +376,7 @@ TaskLoop::LatestRunTime() const
 
 #if xDEBUG
 	if (nextTask)
-		PRINT(("latestRunTime : next task %s\n", typeid(*nextTask).name));
+		PRINT(("latestRunTime : next task %s\n", ""/*typeid(*nextTask).name*/));
 	else
 		PRINT(("latestRunTime : no next task\n"));
 #endif

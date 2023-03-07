@@ -76,15 +76,17 @@ All rights reserved.
 #include <Volume.h>
 
 //	Tracker
+#include "FavoritesConfig.h"
 #include "Commands.h"
+#include "Defines.h"
 #include "IconCache.h"
 #include "IconMenuItem.h"
+#include "LanguageTheme.h"
 #include "Model.h"
 #include "ObjectList.h"
 #include "Utilities.h"
 
-#include "FavoritesConfig.h"
-
+//#define SNAKE
 
 enum {
 	kRemove = 'rmve',
@@ -284,7 +286,6 @@ TFavoritesConfigWindow::~TFavoritesConfigWindow()
 
 	BMessenger tracker("application/x-vnd.Be-TRAK");
 	StopWatchingAll(tracker);
-
 }
 
 void 
@@ -547,10 +548,10 @@ TFavoritesConfigWindow::BuildCommon(BRect *frame, int32 count, const char *strin
 	parent->AddChild(newButton);
 	newButton->SetValue(count > 0);
 	
-	float width = be_plain_font->StringWidth(kShowStr);
+	float width = be_plain_font->StringWidth(LOCALE(kShowStr));
 	frame->right = frame->left + width
 		+ (be_plain_font->StringWidth("0") * 4) + kTextControlPad;		
-	BTextControl *newFld = new BTextControl(*frame, "recents fld", kShowStr, "",
+	BTextControl *newFld = new BTextControl(*frame, "recents fld", LOCALE(kShowStr), "",
 		new BMessage(fldWhat), B_FOLLOW_BOTTOM | B_FOLLOW_LEFT,
 		B_WILL_DRAW | B_NAVIGABLE);
 	parent->AddChild(newFld);
@@ -586,7 +587,7 @@ TFavoritesConfigWindow::AddBeMenuPane(int32 maxApps, int32 maxDocs, int32 maxFol
 	float width = 0;
 	
 	//	New Group
-	fNewGroupBtn = new TDraggableIconButton(BRect(10, 0, 41, 31), kNewGroupStr,
+	fNewGroupBtn = new TDraggableIconButton(BRect(10, 0, 41, 31), LOCALE(kNewGroupStr),
 		new BMessage(kNewGroup), B_FOLLOW_LEFT | B_FOLLOW_BOTTOM,
 		B_WILL_DRAW | B_NAVIGABLE);
 	fBeMenuPaneBG->AddChild(fNewGroupBtn);
@@ -594,7 +595,7 @@ TFavoritesConfigWindow::AddBeMenuPane(int32 maxApps, int32 maxDocs, int32 maxFol
 	//	Recent Documents
 	frame.left = 10;
 	if (maxDocs > -1) {
-		BuildCommon(&frame, maxDocs, kRecentDocsStr,
+		BuildCommon(&frame, maxDocs, LOCALE(kRecentDocsStr),
 			kRecentDocs, kRecentDocsCount, &fRecentDocsBtn, &fRecentDocsFld,
 			fBeMenuPaneBG);
 	} else {
@@ -604,7 +605,7 @@ TFavoritesConfigWindow::AddBeMenuPane(int32 maxApps, int32 maxDocs, int32 maxFol
 
 	//	Recent Applications
 	if (maxApps > -1) {
-		BuildCommon(&frame, maxApps, kRecentAppsStr,
+		BuildCommon(&frame, maxApps, LOCALE(kRecentAppsStr),
 			kRecentApps, kRecentAppsCount, &fRecentAppsBtn, &fRecentAppsFld,
 			fBeMenuPaneBG);
 	} else {
@@ -614,7 +615,7 @@ TFavoritesConfigWindow::AddBeMenuPane(int32 maxApps, int32 maxDocs, int32 maxFol
 	
 	//	Recent Folders
 	if (maxFolders > -1) {
-		BuildCommon(&frame, maxFolders, kRecentFoldersStr,
+		BuildCommon(&frame, maxFolders, LOCALE(kRecentFoldersStr),
 			kRecentFolders, kRecentFoldersCount, &fRecentFoldersBtn, &fRecentFoldersFld,
 			fBeMenuPaneBG);
 	} else {
@@ -623,25 +624,25 @@ TFavoritesConfigWindow::AddBeMenuPane(int32 maxApps, int32 maxDocs, int32 maxFol
 	}
 
 	//	will place this items left edge relative to the contents list
-	fGroupMenu = new BPopUpMenu("Show Group");	
+	fGroupMenu = new BPopUpMenu(LOCALE("Show Group"));	
 	width = be_plain_font->StringWidth("Some Long Name For a Group")
 		+ kMenuFieldPad;
 	frame.Set(0, 10, width, 11);
-	fGroupBtn = new BMenuField(frame, "group btn", kShowGroupStr, fGroupMenu);
+	fGroupBtn = new BMenuField(frame, "group btn", LOCALE(kShowGroupStr), fGroupMenu);
 	fBeMenuPaneBG->AddChild(fGroupBtn);
 	fGroupBtn->HidePopUpMarker();
 	fGroupBtn->SetDivider(0);
 	
 #ifdef IS_SORTABLE
 	//	not sortable now, ever (?)
-	fSortMenu = new BPopUpMenu("Sort By");
-	fSortMenu->AddItem(new BMenuItem("Sort One", NULL));
-	fSortMenu->AddItem(new BMenuItem("Sort Two", NULL));
+	fSortMenu = new BPopUpMenu(LOCALE("Sort By"));
+	fSortMenu->AddItem(new BMenuItem(LOCALE("Sort One"), NULL));
+	fSortMenu->AddItem(new BMenuItem(LOCALE("Sort Two"), NULL));
 	
 	frame.OffsetBy(0, fGroupBtn->Frame().Height() + kMenuFieldGap);
-	fSortBtn = new BMenuField(frame, "sort btn", kSortByStr, fSortMenu);
+	fSortBtn = new BMenuField(frame, "sort btn", LOCALE(kSortByStr), fSortMenu);
 	fBeMenuPaneBG->AddChild(fSortBtn);
-	fSortBtn->SetDivider(be_plain_font->StringWidth(kSortByStr) + 5);	
+	fSortBtn->SetDivider(be_plain_font->StringWidth(LOCALE(kSortByStr)) + 5);	
 #endif
 
 	//	Contents List
@@ -668,27 +669,27 @@ TFavoritesConfigWindow::AddBeMenuPane(int32 maxApps, int32 maxDocs, int32 maxFol
 		new BMessage(kDoubleClick), 10, &fCurrentRef);
 	fBeMenuPaneBG->AddChild(fMenuThing);
 
-	width = be_plain_font->StringWidth("Edit"B_UTF8_ELLIPSIS);
+	width = be_plain_font->StringWidth(LOCALE("Edit"B_UTF8_ELLIPSIS));
 	frame.Set(0, 0, (kMinBtnWidth >= width) ? kMinBtnWidth : width, 1);
-	fEditBtn = new BButton(frame, "edit", "Edit"B_UTF8_ELLIPSIS, new BMessage(kEditItem),
+	fEditBtn = new BButton(frame, "edit", LOCALE("Edit"B_UTF8_ELLIPSIS), new BMessage(kEditItem),
 		B_FOLLOW_NONE, B_WILL_DRAW | B_NAVIGABLE);
 	fBeMenuPaneBG->AddChild(fEditBtn);
 
-	width = be_plain_font->StringWidth(kOpenStr);
+	width = be_plain_font->StringWidth(LOCALE(kOpenStr));
 	frame.Set(0, 0, (kMinBtnWidth >= width) ? kMinBtnWidth : width, 1);
-	fOpenBtn = new BButton(frame, "open", kOpenStr, new BMessage(kOpenItem),
+	fOpenBtn = new BButton(frame, "open", LOCALE(kOpenStr), new BMessage(kOpenItem),
 		B_FOLLOW_NONE, B_WILL_DRAW | B_NAVIGABLE);
 	fBeMenuPaneBG->AddChild(fOpenBtn);
 
-	width = be_plain_font->StringWidth("Add"B_UTF8_ELLIPSIS);
+	width = be_plain_font->StringWidth(LOCALE("Add"B_UTF8_ELLIPSIS));
 	frame.Set(0, 0, (kMinBtnWidth >= width) ? kMinBtnWidth : width, 1);
-	fAddBtn = new BButton(frame, "add", "Add"B_UTF8_ELLIPSIS, new BMessage(kAdd),
+	fAddBtn = new BButton(frame, "add", LOCALE("Add"B_UTF8_ELLIPSIS), new BMessage(kAdd),
 		B_FOLLOW_NONE, B_WILL_DRAW | B_NAVIGABLE);		
 	fBeMenuPaneBG->AddChild(fAddBtn);
 
-	width = be_plain_font->StringWidth(kRemoveStr);
+	width = be_plain_font->StringWidth(LOCALE(kRemoveStr));
 	frame.Set(0, 0, (kMinBtnWidth >= width) ? kMinBtnWidth : width, 1);
-	fRemoveBtn = new BButton(frame, "remove", kRemoveStr, new BMessage(kRemove),
+	fRemoveBtn = new BButton(frame, "remove", LOCALE(kRemoveStr), new BMessage(kRemove),
 		B_FOLLOW_NONE, B_WILL_DRAW | B_NAVIGABLE);
 	fBeMenuPaneBG->AddChild(fRemoveBtn);
 
@@ -780,7 +781,7 @@ GetNextGroupName(BDirectory *dir, char *directoryName)
 {
 	int32 index = 1;
 	for (;;) {
-		sprintf(directoryName, "Untitled Group %li", index);
+		sprintf(directoryName, LOCALE("Untitled Group %li"), index);
 		if (!dir->Contains(directoryName))
 			 break;
 		else
@@ -847,7 +848,7 @@ TFavoritesConfigWindow::PromptForAdd()
 			fAddPanel = new BFilePanel(B_OPEN_PANEL, new BMessenger(this, this),
 				NULL, fFilePanelNodeFlavors, true);
 		
-		fAddPanel->SetButtonLabel(B_DEFAULT_BUTTON, "Add");
+		fAddPanel->SetButtonLabel(B_DEFAULT_BUTTON, LOCALE("Add"));
 		fAddPanel->Show();
 	}
 }
@@ -1327,7 +1328,7 @@ TContentsMenu::Draw(BRect updateRect)
 			resolvedItem.SetTo(&entry);
 			if (entry.Exists()) {
 				//	draw the real item icon
-				IconCache::iconCache->Draw(&resolvedItem, this, iconFrame.LeftTop(),
+				IconCache::sIconCache->Draw(&resolvedItem, this, iconFrame.LeftTop(),
 					kNormalIcon, B_MINI_ICON);
 			} else if (fSymlinkIcon){
 
@@ -1348,7 +1349,7 @@ TContentsMenu::Draw(BRect updateRect)
 				SetDrawingMode(B_OP_OVER);
 				DrawBitmapAsync(fSmallGroupIcon, iconFrame);
 			} else
-				IconCache::iconCache->Draw(item, this, iconFrame.LeftTop(),
+				IconCache::sIconCache->Draw(item, this, iconFrame.LeftTop(),
 					kNormalIcon, B_MINI_ICON);
 					
 			resolvedItem.SetTo(item->EntryRef());
@@ -1371,11 +1372,11 @@ TContentsMenu::Draw(BRect updateRect)
 			//	use the items actual name
 			name = resolvedItem.Name();
 		else
-			name = kUntitledItemStr;
+			name = LOCALE(kUntitledItemStr);
 
 		//	truncate to fit appropriately
-		BString truncatedString;
-		TruncString(fMenuFont, name, truncatedString, textFrame.Width());
+		BString truncatedString(name);
+		fMenuFont->TruncateString(&truncatedString, B_TRUNCATE_END, textFrame.Width());
 
 		SetHighColor(kBlack);
 		SetFont(fMenuFont);
@@ -2153,8 +2154,8 @@ NameItemPanel::MessageReceived(BMessage *message)
 			{
 				const char *text = fNameFld->Text();
 				if (!text || text[0] == '\0'){
-					if ((new BAlert("", "The new name is empty, please enter a name", 
-						"Cancel", "OK", NULL, B_WIDTH_AS_USUAL))->Go() == 0)
+					if ((new BAlert("", LOCALE("The new name is empty, please enter a name"), 
+						LOCALE("Cancel"), LOCALE("OK"), NULL, B_WIDTH_AS_USUAL))->Go() == 0)
 						return;
 				}
 				BMessage nameChangeMessage(kNameChange);
@@ -2182,9 +2183,9 @@ NameItemPanel::AddParts(const char *initialtext)
 	AddChild(fBG);
 	
 	BRect rect(10, 10, Bounds().Width()-10, 11);
-	fNameFld = new BTextControl(rect, "", kNewItemNameLabel, "", NULL);
+	fNameFld = new BTextControl(rect, "", LOCALE(kNewItemNameLabel), "", NULL);
 	fBG->AddChild(fNameFld);
-	fNameFld->SetDivider(be_plain_font->StringWidth(kNewItemNameLabel) + 10);
+	fNameFld->SetDivider(be_plain_font->StringWidth(LOCALE(kNewItemNameLabel)) + 10);
 	fNameFld->SetAlignment(B_ALIGN_RIGHT, B_ALIGN_LEFT);
 	if (initialtext && strlen(initialtext) > 0)
 		fNameFld->SetText(initialtext);
@@ -2198,12 +2199,12 @@ NameItemPanel::AddParts(const char *initialtext)
 	rect.left = rect.right - 75;
 	rect.top = fNameFld->Frame().bottom + 10;
 	rect.bottom = rect.top + 1;
-	fDoneBtn = new BButton(rect, "", "Change", new BMessage('done'),
+	fDoneBtn = new BButton(rect, "", LOCALE("Change"), new BMessage('done'),
 		B_FOLLOW_TOP | B_FOLLOW_RIGHT);
 	
 	rect.right = rect.left - 10;
 	rect.left = rect.right - 75;
-	fCancelBtn = new BButton(rect, "", "Cancel", new BMessage('canc'),
+	fCancelBtn = new BButton(rect, "", LOCALE("Cancel"), new BMessage('canc'),
 		B_FOLLOW_TOP | B_FOLLOW_RIGHT);
 	fBG->AddChild(fCancelBtn);	
 

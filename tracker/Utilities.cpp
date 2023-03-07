@@ -42,10 +42,10 @@ All rights reserved.
 #include <Bitmap.h>
 #include <Debug.h>
 #include <Directory.h>
-#include <PopUpMenu.h>
+#include <fs_info.h>
 #include <MenuItem.h>
 #include <OS.h>
-#include <OS.h>
+#include <PopUpMenu.h>
 #include <Region.h>
 #include <StorageDefs.h>
 #include <TextView.h>
@@ -53,26 +53,25 @@ All rights reserved.
 #include <VolumeRoster.h>
 #include <Window.h>
 
-#if B_BEOS_VERSION_DANO
-#define _IMPEXP_BE
-#endif
+#ifndef __HAIKU__
 extern _IMPEXP_BE const uint32	LARGE_ICON_TYPE;
 extern _IMPEXP_BE const uint32	MINI_ICON_TYPE;
-#if B_BEOS_VERSION_DANO
-#undef _IMPEXP_BE
+#else
+const uint32 LARGE_ICON_TYPE = 'ICON';
+const uint32 MINI_ICON_TYPE = 'MICN';
 #endif
 
 #include "Attributes.h"
+#include "Defines.h"
 #include "MimeTypes.h"
 #include "Model.h"
+#include "PoseView.h"
 #include "Utilities.h"
 #include "ContainerWindow.h"
 
 #include <fs_attr.h>
 
-
-
-FILE *logFile = NULL;
+/*FILE *logFile = NULL;*/
 
 namespace BPrivate {
 
@@ -146,7 +145,81 @@ DisallowMetaKeys(BTextView *textView)
 	textView->DisallowChar(B_PAGE_DOWN);
 	textView->DisallowChar(B_FUNCTION_KEY);
 }
- 
+
+
+PeriodicUpdatePoses::PeriodicUpdatePoses()
+	:	fPoseList(20, true)
+{
+	fLock = new Benaphore("PeriodicUpdatePoses");
+}
+
+
+PeriodicUpdatePoses::~PeriodicUpdatePoses()
+{
+	fLock->Lock();
+	fPoseList.MakeEmpty();
+	delete fLock;
+}
+
+
+void
+PeriodicUpdatePoses::AddPose(BPose *pose, BPoseView *poseView,
+	PeriodicUpdateCallback callback, void *cookie)
+{
+	periodic_pose *periodic = new periodic_pose;
+	periodic->pose = pose;
+	periodic->pose_view = poseView;
+	periodic->callback = callback;
+	periodic->cookie = cookie;
+	fPoseList.AddItem(periodic);
+}
+
+
+bool
+PeriodicUpdatePoses::RemovePose(BPose *pose, void **cookie)
+{
+	int32 count = fPoseList.CountItems();
+	for (int32 index = 0; index < count; index++) {
+		if (fPoseList.ItemAt(index)->pose == pose) {
+			if (!fLock->Lock())
+				return false;
+
+			periodic_pose *periodic = fPoseList.RemoveItemAt(index);
+			if (cookie)
+				*cookie = periodic->cookie;
+			delete periodic;
+			fLock->Unlock();
+			return true;
+		}
+	}
+
+	return false;
+}
+
+
+void
+PeriodicUpdatePoses::DoPeriodicUpdate(bool forceRedraw)
+{
+	if (!fLock->Lock())
+		return;
+
+	int32 count = fPoseList.CountItems();
+	for (int32 index = 0; index < count; index++) {
+		periodic_pose *periodic = fPoseList.ItemAt(index);
+		if (periodic->callback(periodic->pose, periodic->cookie)
+			|| forceRedraw) {
+			periodic->pose_view->LockLooper();
+			periodic->pose_view->UpdateIcon(periodic->pose);
+			periodic->pose_view->UnlockLooper();
+		}
+	}
+
+	fLock->Unlock();
+}
+
+
+static PeriodicUpdatePoses gPeriodicUpdatePoses;
+
 }	// namespace BPrivate
 
 void 
@@ -703,10 +776,11 @@ TitledSeparatorItem::Draw()
 	// ToDo:
 	// handle case where maxStringWidth turns out negative here
 	
-	BString truncatedLabel;
-	TruncString(&truncatedLabel, Label(), parent,
-		maxStringWidth, (uint32)B_TRUNCATE_END, &maxStringWidth);
-
+	BString truncatedLabel(Label());
+	parent->TruncateString(&truncatedLabel, B_TRUNCATE_END, maxStringWidth);
+	
+	maxStringWidth = parent->StringWidth(truncatedLabel.String());
+	
 	// first calculate the length of the stub part of the
 	// divider line, so we can use it for secondStartX
 	float firstEndX = ((endX - startX) - maxStringWidth) / 2 - kStubToStringSlotX;
@@ -815,11 +889,17 @@ EmbedUniqueVolumeInfo(BMessage *message, const BVolume *volume)
 {
 	BDirectory rootDirectory;
 	time_t created;
+	fs_info info;
 
-	volume->GetRootDirectory(&rootDirectory);
-	rootDirectory.GetCreationTime(&created);
-	message->AddInt32("creationDate", created);
-	message->AddInt64("capacity", volume->Capacity());
+	if (volume->GetRootDirectory(&rootDirectory) == B_OK
+		&& rootDirectory.GetCreationTime(&created) == B_OK
+		&& fs_stat_dev(volume->Device(), &info) == 0) {
+		message->AddInt32("creationDate", created);
+		message->AddInt64("capacity", volume->Capacity());
+		message->AddString("deviceName", info.device_name);
+		message->AddString("volumeName", info.volume_name);
+		message->AddString("fshName", info.fsh_name);
+	}
 }
 
 status_t
@@ -834,19 +914,74 @@ MatchArchivedVolume(BVolume *result, const BMessage *message, int32 index)
 
 	BVolumeRoster roster;
 	BVolume volume;
-
-	roster.Rewind();
-	while (roster.GetNextVolume(&volume) == B_OK)
-		if (volume.IsPersistent() && volume.KnowsQuery()) {
-			BDirectory root;
-			volume.GetRootDirectory(&root);
-			time_t cmpCreated;
-			root.GetCreationTime(&cmpCreated);
-			if (created == cmpCreated && capacity == volume.Capacity()) {
-				*result = volume;
-				return B_OK;
+	BString deviceName, volumeName, fshName;
+	
+	if (message->FindString("deviceName", &deviceName) == B_OK
+		&& message->FindString("volumeName", &volumeName) == B_OK
+		&& message->FindString("fshName", &fshName) == B_OK) {
+		// New style volume identifiers: We have a couple of characteristics,
+		// and compute a score from them. The volume with the greatest score
+		// (if over a certain threshold) is the one we're looking for. We
+		// pick the first volume, in case there is more than one with the
+		// same score.
+		dev_t foundDevice = -1;
+		int foundScore = -1;
+		roster.Rewind();
+		while (roster.GetNextVolume(&volume) == B_OK) {
+			if (volume.IsPersistent() && volume.KnowsQuery()) {
+				// get creation time and fs_info
+				BDirectory root;
+				volume.GetRootDirectory(&root);
+				time_t cmpCreated;
+				fs_info info;
+				if (root.GetCreationTime(&cmpCreated) == B_OK
+					&& fs_stat_dev(volume.Device(), &info) == 0) {
+					// compute the score
+					int score = 0;
+					
+					// creation time
+					if (created == cmpCreated) 
+						score += 5;
+					// capacity
+					if (capacity == volume.Capacity())
+						score += 4;
+					// device name
+					if (deviceName == info.device_name)
+						score += 3;
+					// volume name
+					if (volumeName == info.volume_name)
+						score += 2;
+					// fsh name
+					if (fshName == info.fsh_name)
+						score += 1;
+					
+					// check score
+					if (score >= 9 && score > foundScore) {
+						foundDevice = volume.Device();
+						foundScore = score;
+					}
+				}
 			}
 		}
+		if (foundDevice >= 0)
+			return result->SetTo(foundDevice);
+	} else {
+		// Old style volume identifiers: We have only creation time and
+		// capacity. Both must match.
+
+		roster.Rewind();
+		while (roster.GetNextVolume(&volume) == B_OK)
+			if (volume.IsPersistent() && volume.KnowsQuery()) {
+				BDirectory root;
+				volume.GetRootDirectory(&root);
+				time_t cmpCreated;
+				root.GetCreationTime(&cmpCreated);
+				if (created == cmpCreated && capacity == volume.Capacity()) {
+					*result = volume;
+					return B_OK;
+				}
+			}
+	}
 
 	return B_DEV_BAD_DRIVE_NUM;
 }
@@ -957,72 +1092,6 @@ EachEntryRef(const BMessage *message, const entry_ref *(*func)(const entry_ref *
 {
 	return EachEntryRefCommon(const_cast<BMessage *>(message),
 		(EachEntryIteratee)func, passThru, maxCount);
-}
-
-void
-TruncString(const BFont *font, const char *original, BString &result, float width,
-	uint32 truncMode)
-{
-	// these are obsolete, replace with ones in BView
-	const char *srcstr[1];
-	char *results[1];
-
-	srcstr[0] = original;
-	results[0] = new char[strlen(original) + 3];
-
-
-    font->GetTruncatedStrings(srcstr, 1, truncMode, width, results);
-	result = results[0];
-	
-	delete [] results[0];
-}
-
-void
-TruncString(BString *result, const char *str, const BView *view,
-	float width, uint32 truncMode, float *resultingWidth)
-{
-	float inWidth = view->StringWidth(str);
-	if (inWidth <= width) {
-		*result = str;
-		if (resultingWidth)
-			*resultingWidth = inWidth;
-		return;
-	}
-
-	const char *srcstr[1];
-	char *results[1];
-
-	srcstr[0] = str;
-	results[0] = result->LockBuffer((int32)strlen(str) + 3);
-	BFont font;
-	const_cast<BView *>(view)->GetFont(&font);
-    font.GetTruncatedStrings(srcstr, 1, truncMode, width, results);
-	result->UnlockBuffer();
-
-	if (resultingWidth)
-		*resultingWidth = view->StringWidth(result->String());
-}
-
-BString *
-TruncString(const BView *view, const char *str, float width)
-{
-	BString *result = new BString;
-	if (view->StringWidth(str) <= width)
-		(*result) = str;
-	else {
-		const char *srcstr[1];
-		char *results[1];
-
-		srcstr[0] = str;
-		results[0] = result->LockBuffer((int32)strlen(str) + 3);
-
-		BFont font;
-		const_cast<BView *>(view)->GetFont(&font);
-	
-	    font.GetTruncatedStrings(srcstr, 1, (uint32)B_TRUNCATE_END, width, results);
-		result->UnlockBuffer();
-	}
-	return result;
 }
 
 void 
@@ -1205,8 +1274,9 @@ DeleteSubmenu(BMenuItem *submenuItem)
 	if (!menu)
 		return;
 	
-	for (;;) {
-		BMenuItem *item = menu->RemoveItem((int32)0);
+	//printf("deleting submenu: %x in %x\n", menu, submenuItem);
+	for (int32 i = menu->CountItems() - 1; i >= 0; i--) {
+		BMenuItem *item = menu->RemoveItem(i);
 		if (!item)
 			return;
 

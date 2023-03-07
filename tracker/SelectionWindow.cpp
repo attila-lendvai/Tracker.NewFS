@@ -40,6 +40,7 @@ All rights reserved.
 #include "AutoLock.h"
 #include "ContainerWindow.h"
 #include "Commands.h"
+#include "LanguageTheme.h"
 #include "Screen.h"
 #include "SelectionWindow.h"
 
@@ -47,20 +48,22 @@ const int frameThickness = 9;
 
 const uint32 kSelectButtonPressed = 'sbpr';
 
-SelectionWindow::SelectionWindow(BContainerWindow *window)
+SelectionWindow::SelectionWindow(BContainerWindow *window, SettingsView *settingsview, const char* title)
 	:	BWindow(BRect(0, 0, 270, 0),
-			"Select", B_TITLED_WINDOW,
+			title, B_TITLED_WINDOW,
 			B_NOT_ZOOMABLE | B_NOT_MINIMIZABLE | B_NOT_V_RESIZABLE
 			| B_NO_WORKSPACE_ACTIVATION | B_ASYNCHRONOUS_CONTROLS
 			| B_NOT_ANCHORED_ON_ACTIVATE),
-		fParentWindow(window)
+		fParentWindow(window),
+		fSettingsView(settingsview)
 {
-	if (window->Feel() & kPrivateDesktopWindowFeel)
+	if (window && window->Feel() & kPrivateDesktopWindowFeel)
 		// The window will not show up if we have B_FLOATING_SUBSET_WINDOW_FEEL
 		// and use it with the desktop window since it's never in front.
 		SetFeel(B_NORMAL_WINDOW_FEEL);
 	
-	AddToSubset(fParentWindow);
+	if (window)
+		AddToSubset(fParentWindow);
 
 	BRect backgroundRect = Bounds();
 	backgroundRect.InsetBy(-1, -1);
@@ -69,21 +72,21 @@ SelectionWindow::SelectionWindow(BContainerWindow *window)
 
 	BMenu *menu = new BPopUpMenu("");
 	
-	menu->AddItem(new BMenuItem("Name starts with:", NULL));
-	menu->AddItem(new BMenuItem("Name ends with:", NULL));
-	menu->AddItem(new BMenuItem("Name contains:", NULL));
-	menu->AddItem(new BMenuItem("Name matches wildcard expression:", NULL));
-	menu->AddItem(new BMenuItem("Name matches regular expression:", NULL));
+	menu->AddItem(new BMenuItem(LOCALE("Name starts with:"), NULL));
+	menu->AddItem(new BMenuItem(LOCALE("Name ends with:"), NULL));
+	menu->AddItem(new BMenuItem(LOCALE("Name contains:"), NULL));
+	menu->AddItem(new BMenuItem(LOCALE("Name matches wildcard expression:"), NULL));
+	menu->AddItem(new BMenuItem(LOCALE("Name matches regular expression:"), NULL));
 
 	menu->SetLabelFromMarked(true);
 	menu->ItemAt(3)->SetMarked(true);
-		// Set wildcard matching to default.
+	// Set wildcard matching to default.
 	
 	// Set up the menu field
 	fMatchingTypeMenuField = new BMenuField(BRect(7, 6, Bounds().right - 5, 0),
-		NULL, NULL, menu);
+		NULL, LOCALE("Name"), menu);
 	backgroundView->AddChild(fMatchingTypeMenuField);
-	fMatchingTypeMenuField->SetDivider(fMatchingTypeMenuField->StringWidth("Name") + 8);
+	fMatchingTypeMenuField->SetDivider(fMatchingTypeMenuField->StringWidth(fMatchingTypeMenuField->Label()) + 8);
 	fMatchingTypeMenuField->ResizeToPreferred();
 	
 	// Set up the expression text control
@@ -96,19 +99,19 @@ SelectionWindow::SelectionWindow(BContainerWindow *window)
 	
 	// Set up the Invert checkbox
 	fInverseCheckBox = new BCheckBox(BRect(7, fExpressionTextControl->Frame().bottom
-		+ 6, 6, 6), NULL, "Invert", NULL);
+		+ 6, 6, 6), NULL, LOCALE("Invert"), NULL);
 	backgroundView->AddChild(fInverseCheckBox);
 	fInverseCheckBox->ResizeToPreferred();
 	
 	// Set up the Ignore Case checkbox
 	fIgnoreCaseCheckBox = new BCheckBox(BRect(fInverseCheckBox->Frame().right + 10,
-		fInverseCheckBox->Frame().top, 6, 6), NULL, "Ignore case", NULL);
+		fInverseCheckBox->Frame().top, 6, 6), NULL, LOCALE("Ignore case"), NULL);
 	fIgnoreCaseCheckBox->SetValue(1);
 	backgroundView->AddChild(fIgnoreCaseCheckBox);
 	fIgnoreCaseCheckBox->ResizeToPreferred();
 
 	// Set up the Select button
-	fSelectButton = new BButton(BRect(0, 0, 5, 5), NULL, "Select",
+	fSelectButton = new BButton(BRect(0, 0, 5, 5), NULL, title,
 		new BMessage(kSelectButtonPressed), B_FOLLOW_RIGHT);
 		
 	backgroundView->AddChild(fSelectButton);
@@ -121,6 +124,9 @@ SelectionWindow::SelectionWindow(BContainerWindow *window)
 	fSelectButton->SetViewColor(B_TRANSPARENT_COLOR);
 	#endif
 	
+	// if a settingswindow is supplied this window is used to
+	// add / edit static filters in the settings
+
 	font_height fh;
 	be_plain_font->GetHeight(&fh);
 	// Center the checkboxes vertically to the button
@@ -132,7 +138,7 @@ SelectionWindow::SelectionWindow(BContainerWindow *window)
 
 	float bottomMinWidth = 32 + fSelectButton->Bounds().Width() +
 		fInverseCheckBox->Bounds().Width() + fIgnoreCaseCheckBox->Bounds().Width();
-	float topMinWidth = be_plain_font->StringWidth("Name matches wildcard expression:###");
+	float topMinWidth = be_plain_font->StringWidth(LOCALE("Name matches wildcard expression:###"));
 	float minWidth = bottomMinWidth > topMinWidth ? bottomMinWidth : topMinWidth;
 
 	Run();
@@ -156,12 +162,13 @@ SelectionWindow::MessageReceived(BMessage *message)
 	switch (message->what) {
 		case kSelectButtonPressed:
 			{
+				if (fParentWindow)
 					Hide();
-					// Order of posting and hiding important
-					// since we want to activate the target
-					// window when the message arrives.
-					// (Hide is synhcronous, while PostMessage is not.)
-					// See PoseView::SelectMatchingEntries().
+				// Order of posting and hiding important
+				// since we want to activate the target
+				// window when the message arrives.
+				// (Hide is synchronous, while PostMessage is not.)
+				// See PoseView::SelectMatchingEntries().
 					
 				BMessage *selectionInfo = new BMessage(kSelectMatchingEntries);
 				selectionInfo->AddInt32("ExpressionType", ExpressionType());
@@ -170,7 +177,12 @@ SelectionWindow::MessageReceived(BMessage *message)
 				selectionInfo->AddString("Expression", expression.String());
 				selectionInfo->AddBool("InvertSelection", Invert());
 				selectionInfo->AddBool("IgnoreCase", IgnoreCase());
-				fParentWindow->PostMessage(selectionInfo);
+				if (fParentWindow)
+					fParentWindow->PostMessage(selectionInfo);
+				else {
+					fSettingsView->MessageReceived(selectionInfo);
+					Quit();
+				}
 			}
 			break;
 	
@@ -182,8 +194,11 @@ SelectionWindow::MessageReceived(BMessage *message)
 bool
 SelectionWindow::QuitRequested()
 {
-	Hide();
-	return false;
+	if (fParentWindow) {
+		Hide();
+		return false;
+	} else
+		return _inherited::QuitRequested();
 }
 
 void

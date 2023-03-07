@@ -40,6 +40,7 @@ All rights reserved.
 #include <MenuItem.h>
 #include "Model.h"
 #include "Utilities.h"
+
 class BNodeInfo;
 
 namespace BPrivate {
@@ -84,7 +85,7 @@ protected:
 	
 private:
 	void DrawIcon();
-	
+
 	Model fModel;
 	float fHeightDelta;
 	bool fDrawText;

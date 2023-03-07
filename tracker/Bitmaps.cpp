@@ -184,7 +184,6 @@ BImageResources::GetBitmapResource(type_code type, int32 id, BBitmap **out) cons
 	
 	return err;
 }
-	
 
 static BLocker resLock;
 static BImageResources *resources = NULL;

@@ -32,6 +32,7 @@ names are registered trademarks or trademarks of their respective holders.
 All rights reserved.
 */
 
+#include "Defines.h"
 #include <Debug.h>
 #include <Directory.h>
 #include <Entry.h>
@@ -89,7 +90,7 @@ ArgvParser::MakeArgvEmpty()
 {
 	// done with current argv, free it up
 	for (int32 index = 0; index < fArgc; index++)
-		delete fCurrentArgv[index];
+		delete [] fCurrentArgv[index];
 	
 	fArgc = 0;
 }
@@ -164,6 +165,7 @@ ArgvParser::EachArgvPrivate(const char *name, ArgvHandler argvHandlerFunc, void 
 
 	for (;;) {
 		char ch = GetCh();
+	
 		if (ch == EOF) {
 			// done with fFile
 			if (fInDoubleQuote || fInSingleQuote) {
@@ -299,21 +301,15 @@ SettingsArgvDispatcher::WriteRectValue(Settings *setting, BRect rect)
 Settings::Settings(const char *filename, const char *settingsDirName)
 	:	fFileName(filename),
 		fSettingsDir(settingsDirName),
-		fList(0),
-		fCount(0),
-		fListSize(30),
+		fList(new BObjectList<SettingsArgvDispatcher>(30, true)),
 		fCurrentSettings(0)
 {
-	fList = (SettingsArgvDispatcher **)calloc((size_t)fListSize, sizeof(SettingsArgvDispatcher *));
 }
 
 
 Settings::~Settings()
 {
-	for (int32 index = 0; index < fCount; index++)
-		delete fList[index];
-	
-	free(fList);
+	delete fList;
 }
 
 
@@ -325,7 +321,8 @@ Settings::ParseUserSettings(int, const char *const *argv, void *castToThis)
 	
 	SettingsArgvDispatcher *handler = ((Settings *)castToThis)->Find(*argv);
 	if (!handler)
-		return "unknown command";
+		return "unknown command\n";
+	
 	return handler->Handle(argv);
 }
 
@@ -336,23 +333,32 @@ Settings::Add(SettingsArgvDispatcher *setting)
 	if (Find(setting->Name()))
 		return false;
 
-	if (fCount >= fListSize) {
-		fListSize += 30;
-		fList = (SettingsArgvDispatcher **)realloc(fList,
-			fListSize * sizeof(SettingsArgvDispatcher *));
-	}
-	fList[fCount++] = setting;
+	fList->AddItem(setting);
+
 	return true;
 }
 
 SettingsArgvDispatcher *
 Settings::Find(const char *name)
 {
-	for (int32 index = 0; index < fCount; index++)
-		if (strcmp(name, fList[index]->Name()) == 0)
-			return fList[index];
+	for (int32 index = 0; index < fList->CountItems(); index++)
+		if (strcmp(name, fList->ItemAt(index)->Name()) == 0)
+			return fList->ItemAt(index);
 
 	return NULL;
+}
+
+bool
+Settings::Remove(const char *name)
+{
+	for (int32 index = 0; index < fList->CountItems(); index++) {
+		if (strcmp(name, fList->ItemAt(index)->Name()) == 0) {
+			delete fList->RemoveItemAt(index);
+			return true;
+		}
+	}
+	
+	return false;
 }
 
 void 
@@ -418,8 +424,8 @@ Settings::SaveCurrentSettings(bool onlyIfNonDefault)
 		return;
 
 	fCurrentSettings = &prefs;
-	for (int32 index = 0; index < fCount; index++) 
-		fList[index]->SaveSettings(this, onlyIfNonDefault);
+	for (int32 index = 0; index < fList->CountItems(); index++) 
+		fList->ItemAt(index)->SaveSettings(this, onlyIfNonDefault);
 
 	fCurrentSettings = NULL;
 }
@@ -441,4 +447,10 @@ Settings::VSWrite(const char *format, va_list arg)
 	vsprintf(fBuffer, format, arg);
 	ASSERT(fCurrentSettings && fCurrentSettings->InitCheck() == B_OK);
 	fCurrentSettings->Write(fBuffer, strlen(fBuffer));
+}
+
+const char *
+Settings::SettingsDirectory()
+{
+	return fSettingsDir;
 }

@@ -45,8 +45,9 @@ All rights reserved.
 #include "AutoMounter.h"
 #include "Commands.h"
 #include "DeviceMap.h"
-#include "MountMenu.h"
 #include "IconMenuItem.h"
+#include "LanguageTheme.h"
+#include "MountMenu.h"
 #include "Tracker.h"
 
 #define SHOW_NETWORK_VOLUMES
@@ -57,6 +58,8 @@ MountMenu::MountMenu(const char *name)
 	SetFont(be_plain_font);
 }
 
+
+#if _INCLUDES_CLASS_DEVICE_MAP
 
 struct AddOneAsMenuItemParams {
 	BMenu *mountMenu;
@@ -120,10 +123,12 @@ AddOnePartitionAsMenuItem(Partition *partition, void *castToParams)
 
 	return NULL;
 }
+#endif
 
 bool
 MountMenu::AddDynamicItem(add_state)
 {
+#if _INCLUDES_CLASS_DEVICE_MAP
 	for (;;) {
 		BMenuItem *item = RemoveItem(0L);
 		if (item == NULL)
@@ -154,9 +159,7 @@ MountMenu::AddDynamicItem(add_state)
 			BBitmap *icon = new BBitmap(BRect(0, 0, 15, 15), B_COLOR_8_BIT);
 			fs_info info;
 			if (fs_stat_dev(volume.Device(), &info) != B_OK) {
-#if DEBUG
 				PRINT(("Cannot get mount menu item icon; bad device ID\n"));
-#endif
 				delete icon;
 				continue;
 			}
@@ -181,13 +184,13 @@ MountMenu::AddDynamicItem(add_state)
 	// add an option to rescan the scsii bus, etc.
 	BMenuItem *rescanItem = NULL;
 	if (modifiers() & B_SHIFT_KEY) {
-		rescanItem = new BMenuItem("Rescan Devices", new BMessage(kAutomounterRescan));
+		rescanItem = new BMenuItem(LOCALE("Rescan Devices"), new BMessage(kAutomounterRescan));
 		AddItem(rescanItem);
 	}
 
-	BMenuItem *mountAll = new BMenuItem("Mount All", new BMessage(kMountAllNow));
+	BMenuItem *mountAll = new BMenuItem(LOCALE("Mount All"), new BMessage(kMountAllNow));
 	AddItem(mountAll);
-	BMenuItem *mountSettings = new BMenuItem("Settings"B_UTF8_ELLIPSIS, 
+	BMenuItem *mountSettings = new BMenuItem(LOCALE("Settings"B_UTF8_ELLIPSIS), 
 		new BMessage(kRunAutomounterSettings));
 	AddItem(mountSettings);
 
@@ -197,4 +200,7 @@ MountMenu::AddDynamicItem(add_state)
 		rescanItem->SetTarget(dynamic_cast<TTracker*>(be_app)->AutoMounterLoop());
 	
 	return false;
+#else
+	return true;
+#endif
 }

@@ -120,7 +120,7 @@ public:
 	regexp *Expression() const;
 	const char *ErrorString() const;
 
-#ifdef DEBUG
+#if DEBUG
 	void Dump();
 #endif
 
@@ -147,7 +147,7 @@ private:
 	int32 Repeat(const char *) const;
 
 	// Utility functions:
-#ifdef DEBUG
+#if DEBUG
 	char *Prop(const char *) const;
 	void RegExpError(const char *) const;
 #endif

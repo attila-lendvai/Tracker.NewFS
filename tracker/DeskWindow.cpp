@@ -52,14 +52,16 @@ All rights reserved.
 #include "DesktopPoseView.h"
 #include "DeskWindow.h"
 #include "DeviceMap.h"
-#include "TFSContext.h"
+#include "ExtendedIcon.h"
 #include "IconMenuItem.h"
+#include "LanguageTheme.h"
 #include "MountMenu.h"
 #include "PoseView.h"
 #include "Tracker.h"
 #include "TemplatesMenu.h"
+#include "TFSContext.h"
 
-
+const uint32 kAddOnMenuClicked = 'AOMC';
 const char *kShelfPath = "tracker_shelf";
 	// replicant support
 
@@ -70,7 +72,6 @@ BDeskWindow::BDeskWindow(LockingList<BWindow> *windowList)
 			B_NOT_CLOSABLE | B_NOT_MINIMIZABLE | B_ASYNCHRONOUS_CONTROLS,
 			B_ALL_WORKSPACES),
 		fDeskShelf(0),
-		fTrashContextMenu(0),
 		fShouldUpdateAddonShortcuts(true)
 {
 }
@@ -102,7 +103,6 @@ WatchAddOnDir(directory_which dirName, BDeskWindow *window)
 void
 BDeskWindow::Init(const BMessage *)
 {
-	AddTrashContextMenu();
 	//
 	//	Set the size of the screen before calling the container window's
 	//	Init() because it will add volume poses to this window and
@@ -140,7 +140,7 @@ struct AddOneShortcutParams {
 };
 
 static bool
-AddOneShortcut(const Model *model, const char *, uint32 shortcut, void *context)
+AddOneShortcut(const Model *model, const char *, uint32 shortcut, bool /*primary*/, void *context)
 {
 	if (!shortcut)
 		// no shortcut, bail
@@ -164,13 +164,13 @@ BDeskWindow::MenusBeginning()
 	_inherited::MenusBeginning();
 
 	if (fShouldUpdateAddonShortcuts) {
-//		PRINT(("updating addon shortcuts\n"));
+		PRINT(("updating addon shortcuts\n"));
 		fShouldUpdateAddonShortcuts = false;
 		
 		// remove all current addon shortcuts
 		for (set<uint32>::iterator it= fCurrentAddonShortcuts.begin();
 			it != fCurrentAddonShortcuts.end(); it++) {
-//			PRINT(("removing shortcut %c\n", *it));
+			PRINT(("removing shortcut %c\n", *it));
 			RemoveShortcut(*it, B_OPTION_KEY | B_COMMAND_KEY);
 		}
 		
@@ -186,7 +186,7 @@ BDeskWindow::MenusBeginning()
 void
 BDeskWindow::Quit()
 {
-	if (fNavigationItem) {
+/*	if (fNavigationItem) {
 		// this duplicates BContainerWindow::Quit because
 		// fNavigationItem can be part of fTrashContextMenu
 		// and would get deleted with it
@@ -194,11 +194,11 @@ BDeskWindow::Quit()
 		if (menu)
 			menu->RemoveItem(fNavigationItem);
 		delete fNavigationItem;
-		fNavigationItem = 0;
+		fNavigationItem = NULL;
 	}
 
 	delete fTrashContextMenu;
-	fTrashContextMenu = NULL;
+	fTrashContextMenu = NULL;*/
 
 	delete fDeskShelf;
 	_inherited::Quit();
@@ -236,48 +236,47 @@ BDeskWindow::CreatePoseView(Model *model)
 void 
 BDeskWindow::AddWindowContextMenus(BMenu *menu)
 {
-	TemplatesMenu *tempateMenu = new TemplatesMenu(PoseView());
+	TemplatesMenu *tempateMenu = new TemplatesMenu(PoseView(), LOCALE(kTemplatesMenuName));
 
 	menu->AddItem(tempateMenu);
 	tempateMenu->SetTargetForItems(PoseView());
 	tempateMenu->SetFont(be_plain_font);
 
 	menu->AddSeparatorItem();
-	menu->AddItem(new BMenuItem("Icon View", new BMessage(kIconMode)));
-	menu->AddItem(new BMenuItem("Mini Icon View", new BMessage(kMiniIconMode)));
+	menu->AddItem(new BMenuItem(LOCALE("Hide Icons"), new BMessage(kHideIconMode)));
+	menu->AddItem(new BMenuItem(LOCALE("Icon View"), new BMessage(kIconMode)));
+	menu->AddItem(new BMenuItem(LOCALE("Mini Icon View"), new BMessage(kMiniIconMode)));
+	BMenu *size = new BMenu(LOCALE("Scaled Mode"));
+	for (int i = 2; i < exiconcount; i++) {
+		char buffer[1024];
+		sprintf(buffer, LOCALE("%d x %d Pixel"), exiconsize[i], exiconsize[i]);
+		size->AddItem(new BMenuItem(buffer, new BMessage(kScaleIconMode)));
+	}
+	size->SetTargetForItems(PoseView());
+	menu->AddItem(new BMenuItem(size));
 	menu->AddSeparatorItem();
 	BMenuItem *pasteItem;
-	menu->AddItem(pasteItem = new BMenuItem("Paste", new BMessage(B_PASTE), 'V'));
+	menu->AddItem(pasteItem = new BMenuItem(LOCALE("Paste"), new BMessage(B_PASTE), 'V'));
 	menu->AddSeparatorItem();
-	menu->AddItem(new BMenuItem("Clean Up", new BMessage(kCleanup), 'K'));
-	menu->AddItem(new BMenuItem("Select"B_UTF8_ELLIPSIS,
+	menu->AddItem(new BMenuItem(LOCALE("Clean Up"), new BMessage(kCleanup), 'K'));
+	menu->AddItem(new BMenuItem(LOCALE("Select"B_UTF8_ELLIPSIS),
 		new BMessage(kShowSelectionWindow), 'A', B_SHIFT_KEY));
-	menu->AddItem(new BMenuItem("Select All", new BMessage(B_SELECT_ALL), 'A'));
+	menu->AddItem(new BMenuItem(LOCALE("Select All"), new BMessage(B_SELECT_ALL), 'A'));
+	BMenuItem *settingsItem = new BMenuItem(LOCALE("Settings"B_UTF8_ELLIPSIS), new BMessage(kShowSettingsWindow));
+	menu->AddItem(settingsItem);
+	
+	menu->AddSeparatorItem();
+	menu->AddItem(new MountMenu(LOCALE("Mount")));
 
 	menu->AddSeparatorItem();
-	menu->AddItem(new MountMenu("Mount"));
 
-	menu->AddSeparatorItem();
-
-	menu->AddItem(new BMenu(kAddOnsMenuName));
+	BMenu *addOnMenuItem = new BMenu(LOCALE(kAddOnsMenuName));
+	menu->AddItem(new BMenuItem(addOnMenuItem, new BMessage(kAddOnMenuClicked)));
 
 	// target items as needed
 	menu->SetTargetForItems(PoseView());
 	pasteItem->SetTarget(this);
-}
-
-void
-BDeskWindow::AddTrashContextMenu()
-{
-	// setup special trash context menu
-	fTrashContextMenu = new BPopUpMenu("TrashContext", false, false);
-	fTrashContextMenu->SetFont(be_plain_font);
-	fTrashContextMenu->AddItem(new BMenuItem("Empty Trash",
-		new BMessage(kEmptyTrash)));
-	fTrashContextMenu->AddItem(new BMenuItem("Open",
-		new BMessage(kOpenSelection), 'O'));
-	fTrashContextMenu->AddItem(new BMenuItem("Get Info", new BMessage(kGetInfo), 'I'));
-	fTrashContextMenu->SetTargetForItems(PoseView());
+	settingsItem->SetTarget(be_app);
 }
 
 void
@@ -287,26 +286,7 @@ BDeskWindow::ShowContextMenu(BPoint loc, const entry_ref *ref, BView *view)
 	// cleanup previous entries
 	DeleteSubmenu(fNavigationItem);
 
-	if (ref && entry.SetTo(ref) == B_OK && TFSContext::IsTrashDir(entry)) {
-		//
-		//	don't show any menu if this is the trash
-		if (Dragging() && TFSContext::IsTrashDir(entry))
-			return;
-			
-		// selected item was trash, show the trash context menu instead
-		BPoint global(loc);
-		PoseView()->ConvertToScreen(&global);
-		PoseView()->CommitActivePose();
-		BRect mouse_rect(global.x, global.y, global.x, global.y);
-		mouse_rect.InsetBy(-5, -5);
-
-		EnableNamedMenuItem(fTrashContextMenu, kEmptyTrash, 
-			static_cast<TTracker *>(be_app)->TrashFull());
-
-		SetupNavigationMenu(ref, fTrashContextMenu);
-		fTrashContextMenu->Go(global, true, false, mouse_rect, true);
-	} else
-		_inherited::ShowContextMenu(loc, ref, view);
+	_inherited::ShowContextMenu(loc, ref, view);
 }
 
 void 
@@ -394,7 +374,7 @@ BDeskWindow::MessageReceived(BMessage *message)
 
 	switch (message->what) {
 		case B_NODE_MONITOR:
-//			PRINT(("will update addon shortcuts\n"));
+			PRINT(("will update addon shortcuts\n"));
 			fShouldUpdateAddonShortcuts = true;
 			break;
 

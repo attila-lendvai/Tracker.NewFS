@@ -32,6 +32,10 @@ names are registered trademarks or trademarks of their respective holders.
 All rights reserved.
 */
 
+/* !!!!!!!! BVolumeWindow should not be used anymore !!!!!!!!! */
+
+#if 0
+/*
 #include <Debug.h>
 #include <Menu.h>
 #include <MenuBar.h>
@@ -42,6 +46,7 @@ All rights reserved.
 #include <VolumeRoster.h>
 
 #include "Commands.h"
+#include "Defines.h"
 #include "VolumeWindow.h"
 #include "PoseView.h"
 #include "MountMenu.h"
@@ -105,13 +110,6 @@ BVolumeWindow::AddFileMenu(BMenu *menu)
 	menu->SetTargetForItems(PoseView());
 }
 
-void
-BVolumeWindow::SetupMoveCopyMenus(const entry_ref *, BMenu *)
-{
-	// intentionally do nothing here so we don't get "Move To"
-	// or "Copy To" items in the volume window menus
-}
-
 void 
 BVolumeWindow::AddWindowContextMenus(BMenu *menu)
 {
@@ -133,7 +131,7 @@ BVolumeWindow::AddWindowContextMenus(BMenu *menu)
 	menu->AddItem(new BMenuItem("Select All", new BMessage(B_SELECT_ALL), 'A'));
 	menu->AddItem(new BMenuItem("Invert Selection", new BMessage(kInvertSelection), 'S'));
 
-	BMenuItem *closeItem = new BMenuItem("Close", new BMessage(B_CLOSE_REQUESTED), 'W');
+	BMenuItem *closeItem = new BMenuItem("Close", new BMessage(B_QUIT_REQUESTED), 'W');
 	menu->AddItem(closeItem);
 	menu->AddSeparatorItem();
 
@@ -141,11 +139,12 @@ BVolumeWindow::AddWindowContextMenus(BMenu *menu)
 	menu->AddSeparatorItem();
 
 	menu->AddItem(new BMenu(kAddOnsMenuName));
-	menu->AddSeparatorItem();
+	//menu->AddSeparatorItem();
 
 	// target items as needed
 	menu->SetTargetForItems(PoseView());
 	closeItem->SetTarget(this);
 	resizeItem->SetTarget(this);
 }
-
+*/
+#endif

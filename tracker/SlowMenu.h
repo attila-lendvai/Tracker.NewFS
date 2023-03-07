@@ -35,6 +35,7 @@ All rights reserved.
 #ifndef __SLOW_MENU__
 #define __SLOW_MENU__
 
+#include "Defines.h"
 #include <Menu.h>
 #include <MenuItem.h>
 #include "ObjectList.h"

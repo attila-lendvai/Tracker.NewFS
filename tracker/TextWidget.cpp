@@ -63,6 +63,8 @@ BTextWidget::BTextWidget(Model *model, BColumn *column, BPoseView *view)
 		fActive(false),
 		fSymLink(model->IsSymLink())
 {
+	//view->SetFont(be_bold_font);
+	//view->SetFontSize(20);
 }
 
 BTextWidget::~BTextWidget()
@@ -91,7 +93,7 @@ BTextWidget::Text() const
 	ASSERT(textAttribute);
 	if (!textAttribute)
 		return "";
-
+	
 	return textAttribute->Value();
 }
 
@@ -131,20 +133,20 @@ BTextWidget::CalcRectCommon(BPoint poseLoc, const BColumn *column,
 	BRect result;
 	if (view->ViewMode() == kListMode) {
 		poseLoc.x += column->Offset();
-
+		
 		switch (fAlignment) {
 			case B_ALIGN_LEFT:
 				result.left = poseLoc.x;
 				result.right = result.left + textWidth + 1;
 				break;
-
+			
 			case B_ALIGN_CENTER:
 				result.left = poseLoc.x + (column->Width() / 2) - (textWidth / 2);
 				if (result.left < 0)
 					result.left = 0;
 				result.right = result.left + textWidth + 1;
 				break;
-
+			
 			case B_ALIGN_RIGHT:
 				result.right = poseLoc.x + column->Width();
 				result.left = result.right - textWidth - 1;
@@ -154,22 +156,23 @@ BTextWidget::CalcRectCommon(BPoint poseLoc, const BColumn *column,
 			default:
 				TRESPASS();
 		}
-
+		
 		result.bottom = poseLoc.y + (view->ListElemHeight() - 1);
 	} else {
-
-		if (view->ViewMode() == kIconMode)
-			result.left = poseLoc.x + (B_LARGE_ICON - textWidth) / 2;
+		
+		if (view->ViewMode() == kIconMode
+			|| view->ViewMode() == kScaleIconMode)
+			result.left = poseLoc.x + (view->IconSizeInt() - textWidth) / 2;
 		else 
 			// MINI_ICON_MODE rect calc
 			result.left = poseLoc.x + B_MINI_ICON + kMiniIconSeparator;
-
+		
 		result.right = result.left + textWidth;
 		result.bottom = poseLoc.y + view->IconPoseHeight();
-
+		
 	}
 	result.top = result.bottom - view->FontHeight();
-
+	
 	return result;
 }
 
@@ -325,6 +328,7 @@ BTextWidget::StartEdit(BRect bounds, BPoseView *view, BPose *pose)
 	// configure text view
 	switch (view->ViewMode()) {
 		case kIconMode:
+		case kScaleIconMode:
 			textView->SetAlignment(B_ALIGN_CENTER);
 			break;
 
@@ -377,7 +381,7 @@ BTextWidget::StopEdit(bool saveChanges, BPoint poseLoc, BPoseView *view,
 	if (saveChanges && fText->CommitEditedText(textView))
 		// we have an actual change, re-sort
 		view->CheckPoseSortOrder(pose, poseIndex);
-
+		
 	// make text widget visible again
 	SetVisible(true);
 	view->Invalidate(ColumnRect(poseLoc, column, view));
@@ -456,16 +460,16 @@ BTextWidget::Draw(BRect eraseRect, BRect textRect, float, BPoseView *view,
 		}
 		drawView->SetHighColor(highColor);
 	}
-
+	
 	drawView->DrawString(fText->FittingText(view));
-
+	
 	if (fSymLink && (fAttrHash == view->FirstColumn()->AttrHash())) {
 		// ToDo:
 		// this should be exported to the WidgetAttribute class, probably
 		// by having a per widget kind style
 		if (direct) 
 			drawView->SetHighColor(125, 125, 125);
-
+		
 		textRect.right = textRect.left + fText->Width(view);
 			// only underline text part
 		drawView->StrokeLine(textRect.LeftBottom(), textRect.RightBottom(),

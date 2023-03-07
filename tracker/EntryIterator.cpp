@@ -39,6 +39,7 @@ All rights reserved.
 #include <new>
 #include <string.h>
 
+#include "Defines.h"
 #include "EntryIterator.h"
 #include "NodeWalker.h"
 #include "ObjectList.h"

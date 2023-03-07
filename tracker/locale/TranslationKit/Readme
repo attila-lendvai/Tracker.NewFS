@@ -1,0 +1,23 @@
+This is a Tracker.NewFS 3.0 Translation Kit. It is supposed to provide you with everything you need to create localisations for upcoming releases of Tracker.NewFS.
+
+This archive should contain the following:
+tracker.zip -> Tracker, Deskbar and libtracker.so with support for Language Themes.
+languagethems.zip -> Two basic language files to base your work off.
+Readme -> This file.
+
+To get everything setup you should take the following steps:
+1. Create a backup of Tracker, Deskbar and libtracker.so under "/boot/beos/system".
+2. Unzip the tracker.zip file with destination "/system".
+3. Unzip the languagethems.zip file with destination "/boot".
+4. Restart Tracker and Deskbar or reboot the system.
+
+Now you can navigate to "/boot/home/config/settings/Tracker/LanguageThemes" and start a new translation file by copying "Reference".
+
+To enable the language:
+5. Go to Tracker Settings -> Language and Select your new language.
+6. Restart Tracker and Deskbar.
+
+When you finish the translation please send the resulting file back to me (mmlr@mlotz.ch). Thanks for your time and effort in advance.
+
+LEGAL: By sending the file to me you give me the permission to include your translation file, with or without changes, in any upcoming release of Tracker.NewFS.
+NOTES: Dynamic switching of the language is not yet in place. This features will probably be present in future public releases.

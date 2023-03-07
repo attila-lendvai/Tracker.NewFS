@@ -33,34 +33,33 @@ All rights reserved.
 */
 
 #include <fs_attr.h>
-#include <malloc.h>
 #include <stdlib.h>
 #include <string.h>
 #include <ctype.h>
 #include <parsedate.h>
-
 
 #include <Alert.h>
 #include <AppFileInfo.h>
 #include <Debug.h>
 #include <NodeInfo.h>
 #include <Path.h>
+#include <TextView.h>
+#include <Volume.h>
 #include <VolumeRoster.h>
 
 #include "Attributes.h"
 #include "FindPanel.h"
-#include "TFSContext.h"
+#include "LanguageTheme.h"
+#include "MimeTypes.h"
 #include "Model.h"
 #include "OpenWithWindow.h"
-#include "MimeTypes.h"
 #include "PoseView.h"
 #include "SettingsViews.h"
-#include "TextView.h"
+#include "TFSContext.h"
+#include "Undo.h"
 #include "Utilities.h"
 #include "ViewState.h"
-#include "Volume.h"
 #include "WidgetAttributeText.h"
-#include "Tracker.h"
 
 template <class View>
 float
@@ -198,24 +197,24 @@ TruncFileSizeBase(BString *result, int64 value, const View *view, float width)
 		*result = "-";
 		return view->StringWidth("-");
 	} else if (value < kKBSize) {
-		sprintf(buffer, "%Ld bytes", value);
+		sprintf(buffer, "%Ld %s", value, LOCALE("bytes"));
 		if (view->StringWidth(buffer) > width)
 			sprintf(buffer, "%Ld B", value);
 	} else {
 		const char *suffix;
 		float floatValue;
 		if (value >= kTBSize) {
-			suffix = "TB";
+			suffix = LOCALE("TB");
 			floatValue = (float)value / kTBSize;
 		} else if (value >= kGBSize) {
-			suffix = "GB";
+			suffix = LOCALE("GB");
 			floatValue = (float)value / kGBSize;
 		} else if (value >= kMBSize) {
-			suffix = "MB";
+			suffix = LOCALE("MB");
 			floatValue = (float)value / kMBSize;
 		} else {
 			ASSERT(value >= kKBSize);
-			suffix = "KB";
+			suffix = LOCALE("KB");
 			floatValue = (float)value / kKBSize;
 		}
 		
@@ -353,10 +352,9 @@ template <class View>
 float
 TruncTimeBase(BString *result, int64 value, const View *view, float width)
 {
-	TrackerSettings settings;
-	FormatSeparator separator = settings.TimeFormatSeparator();
-	DateOrder order = settings.DateOrderFormat();
-	bool clockIs24hr = settings.ClockIs24Hr();
+	FormatSeparator separator = gTrackerSettings.TimeFormatSeparator();
+	DateOrder order = gTrackerSettings.DateOrderFormat();
+	bool clockIs24hr = gTrackerSettings.ClockIs24Hr();
 
 	float resultWidth = 0;
 	char buffer[256];
@@ -683,7 +681,7 @@ KindAttributeText::ReadValue(BString *result)
 
 	// get the mime type
 	if (mime.SetType(fModel->MimeType()) != B_OK)
-		*result = "Unknown";
+		*result = LOCALE("Unknown");
 	// get the short mime type description
 	else if (mime.GetShortDescription(desc) == B_OK)
 		*result = desc;
@@ -716,7 +714,7 @@ NameAttributeText::Compare(WidgetAttributeText &attr, BPoseView *)
 void
 NameAttributeText::ReadValue(BString *result)
 {
-#ifdef DEBUG
+#if DEBUG
 // x86 support :-)
 	if ((modifiers() & B_CAPS_LOCK) != 0) {
 		if (fModel->IsVolume()) {
@@ -795,8 +793,8 @@ NameAttributeText::CommitEditedTextFlavor(BTextView *textView)
 
 	bool removeExisting = false;
 	if (parent.Contains(text)) {
-		BAlert *alert = new BAlert("", "That name is already taken. "
-			"Please type another one.", "Replace other file", "OK", NULL,
+		BAlert *alert = new BAlert("", LOCALE("That name is already taken. "
+			"Please type another one."), LOCALE("Replace other file"), LOCALE("OK"), NULL,
 			B_WIDTH_AS_USUAL, B_WARNING_ALERT);
 
 		alert->SetShortcut(0, 'r');
@@ -822,7 +820,23 @@ NameAttributeText::CommitEditedTextFlavor(BTextView *textView)
 			ASSERT(fModel->Node());
 			MoreOptionsStruct::SetQueryTemporary(fModel->Node(), false);
 		}
-		result = entry.Rename(text);
+		
+		BMessage *undo = NULL;
+		if (gTrackerSettings.UndoEnabled()) {
+			char old_name[B_FILE_NAME_LENGTH];
+			entry.GetName(old_name);
+			undo = new BMessage(kEditName);
+			undo->AddString("old_name", old_name);
+			undo->AddString("new_name", text);
+		}
+		result = entry.Rename(text, removeExisting);
+		
+		if (gTrackerSettings.UndoEnabled()) {
+			entry_ref new_ref;
+			entry.GetRef(&new_ref);
+			undo->AddRef("new_ref", &new_ref);
+			gUndoHistory.AddItem(undo);
+		}
 	}
 
 	return result == B_OK;
@@ -932,6 +946,12 @@ SizeAttributeText::ReadValue()
 {
 	fValueDirty = false;
 	// get the size
+
+	if (fModel->IsVolume()) {
+		BVolume volume(fModel->NodeRef()->device);
+		return volume.Capacity();
+	}
+	
 	if (fModel->IsDirectory() || fModel->IsQuery()
 		|| fModel->IsQueryTemplate() || fModel->IsSymLink())
 		return kUnknownSize;
@@ -1095,17 +1115,18 @@ GenericAttributeText::ReadValue()
 				attr_info info;
 				GenericValueStruct tmp;
 				if (fModel->Node()->GetAttrInfo(fColumn->AttrName(), &info) == B_OK) {
-					if (info.size && info.size <= sizeof(int64))
+					if (info.size && info.size <= sizeof(int64)) {
 						length = fModel->Node()->ReadAttr(fColumn->AttrName(),
 							fColumn->AttrType(), 0, &tmp, (size_t)info.size);
-	
+						}
+						
 						// We used tmp as a block of memory, now set the correct fValue:
 						
-						if (length == info.size)
-						
+						if (length == info.size) {
 							if (fColumn->AttrType() == B_FLOAT_TYPE
 								|| fColumn->AttrType() == B_DOUBLE_TYPE) {
-							
+								
+								// filter out special float/double types
 								switch (info.size) {
 									case sizeof(float):
 										fValueIsDefined = true;
@@ -1122,7 +1143,7 @@ GenericAttributeText::ReadValue()
 								}
 								
 							} else { 	
-					
+								// handle the standard data types
 								switch (info.size) {
 									case sizeof(char):	// Takes care of bool, too.
 										fValueIsDefined = true;
@@ -1149,7 +1170,7 @@ GenericAttributeText::ReadValue()
 								}
 							}
 						}
-	
+					}
 				break;
 			}
 	}
@@ -1174,6 +1195,10 @@ GenericAttributeText::FitValue(BString *result, const BPoseView *view)
 	char buffer[256];
 
 	switch (fColumn->AttrType()) {
+		case B_SIZE_T_TYPE:
+			TruncFileSizeBase(result, fValue.int32t, view, fOldWidth);
+			return;
+			
 		case B_SSIZE_T_TYPE:
 			if (fValue.int32t > 0) {
 				TruncFileSizeBase(result, fValue.int32t, view, fOldWidth);
@@ -1423,24 +1448,27 @@ GenericAttributeText::CommitEditedTextFlavor(BTextView *textView)
 
 	uint32 type = fColumn->AttrType();
 
-	if (type != B_STRING_TYPE
-		&& type != B_UINT64_TYPE
-		&& type != B_UINT32_TYPE
-		&& type != B_UINT16_TYPE
-		&& type != B_UINT8_TYPE
-		&& type != B_INT64_TYPE
-		&& type != B_INT32_TYPE
-		&& type != B_INT16_TYPE
-		&& type != B_INT8_TYPE
-		&& type != B_OFF_T_TYPE
-		&& type != B_TIME_TYPE
-		&& type != B_FLOAT_TYPE
-		&& type != B_DOUBLE_TYPE
-		&& type != B_CHAR_TYPE
-		&& type != B_BOOL_TYPE) {
-		(new BAlert("", "Sorry, you cannot edit that attribute.",
-			"Cancel", 0, 0, B_WIDTH_AS_USUAL, B_STOP_ALERT))->Go();
-		return false;
+	switch(type) {
+		case B_STRING_TYPE:
+		case B_UINT64_TYPE:
+		case B_UINT32_TYPE:
+		case B_UINT16_TYPE:
+		case B_UINT8_TYPE:
+		case B_INT64_TYPE:
+		case B_INT32_TYPE:
+		case B_INT16_TYPE:
+		case B_INT8_TYPE:
+		case B_OFF_T_TYPE:
+		case B_TIME_TYPE:
+		case B_FLOAT_TYPE:
+		case B_DOUBLE_TYPE:
+		case B_CHAR_TYPE:
+		case B_BOOL_TYPE:
+			break;
+		default:
+			(new BAlert("", LOCALE("Sorry, you cannot edit that attribute."),
+				LOCALE("Cancel"), 0, 0, B_WIDTH_AS_USUAL, B_STOP_ALERT))->Go();
+			return false;
 	}
 
 	const char *columnName = fColumn->AttrName();
@@ -1470,8 +1498,8 @@ GenericAttributeText::CommitEditedTextFlavor(BTextView *textView)
 				sscanf(textView->Text(), "%c", &ch);
 				//Check if we read the start of a multi-byte glyph:
 				if (!isprint(ch)) {
-					(new BAlert("", "Sorry, The 'Character' attribute cannot store a multi-byte glyph.",
-						"Cancel", 0, 0, B_WIDTH_AS_USUAL, B_STOP_ALERT))->Go();
+					(new BAlert("", LOCALE("Sorry, The 'Character' attribute cannot store a multi-byte glyph."),
+						LOCALE("Cancel"), 0, 0, B_WIDTH_AS_USUAL, B_STOP_ALERT))->Go();
 					return false;
 				}
 				
@@ -1568,8 +1596,8 @@ GenericAttributeText::CommitEditedTextFlavor(BTextView *textView)
 	}
 
 	if (size < 0) {
-		(new BAlert("", "There was an error writing the attribute.",
-			"Cancel", 0, 0, B_WIDTH_AS_USUAL, B_WARNING_ALERT))->Go();
+		(new BAlert("", LOCALE("There was an error writing the attribute."),
+			LOCALE("Cancel"), 0, 0, B_WIDTH_AS_USUAL, B_WARNING_ALERT))->Go();
 
 		fValueIsDefined = false;
 		return false;

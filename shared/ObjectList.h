@@ -120,7 +120,7 @@ public:
 	bool ReplaceItem(int32, void *);
 
 protected:
-	bool owning;
+	bool fOwning;
 
 };
 
@@ -367,7 +367,7 @@ EachListItem(BObjectList<Item> *list, void (*func)(Item *,Param1, Param2,
 inline bool
 _PointerList_::Owning() const
 {
-	return owning;
+	return fOwning;
 }
 
 template<class T> 
@@ -380,8 +380,8 @@ template<class T>
 BObjectList<T>::BObjectList(const BObjectList<T> &list)
 	:	_PointerList_(list)
 {
-	owning = list.owning;
-	if (owning) {
+	fOwning = list.Owning();
+	if (fOwning) {
 		// make our own copies in an owning list
 		int32 count = list.CountItems();
 		for	(int32 index = 0; index < count; index++) {
@@ -406,9 +406,9 @@ template<class T>
 BObjectList<T> &
 BObjectList<T>::operator=(const BObjectList<T> &list)
 {
-	owning = list.owning;
+	fOwning = list.owning;
 	BObjectList<T> &result = (BObjectList<T> &)_PointerList_::operator=(list);
-	if (owning) {
+	if (fOwning) {
 		// make our own copies in an owning list
 		int32 count = list.CountItems();
 		for	(int32 index = 0; index < count; index++) {
@@ -481,7 +481,7 @@ template<class T>
 bool 
 BObjectList<T>::ReplaceItem(int32 index, T *item)
 {
-	if (owning)
+	if (Owning())
 		delete ItemAt(index);
 	return _PointerList_::ReplaceItem(index, (void *)item);
 }
@@ -548,7 +548,7 @@ template<class T>
 void 
 BObjectList<T>::MakeEmpty()
 {
-	if (owning) {
+	if (Owning()) {
 		int32 count = CountItems();
 		for (int32 index = 0; index < count; index++)
 			delete ItemAt(index);
@@ -668,7 +668,7 @@ BObjectList<T>::BinaryInsert(T *item, CompareFunctionWithState func, void *state
 
 template<class T>
 bool 
-BObjectList<T>::BinaryInsertUnique(T *, CompareFunction func)
+BObjectList<T>::BinaryInsertUnique(T *item, CompareFunction func)
 {
 	int32 index = _PointerList_::BinarySearchIndex(item,
 		(GenericCompareFunction)func);

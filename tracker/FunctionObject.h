@@ -39,6 +39,8 @@ All rights reserved.
 #include <boost/type_traits.hpp>
 #include <boost/utility.hpp>
 
+#include <Message.h>
+
 #include <Debug.h>
 
 #define TM_NEED_PLAIN_C_FUNCTION_SUPPORT		1

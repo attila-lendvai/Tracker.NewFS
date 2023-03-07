@@ -64,13 +64,15 @@ All rights reserved.
 #include "AutoLock.h"
 #include "Commands.h"
 #include "ContainerWindow.h"
+#include "Defines.h"
 #include "FindPanel.h"
 #include "FSUtils.h"
-#include "TFSContext.h"
 #include "FunctionObject.h"
 #include "IconMenuItem.h"
+#include "LanguageTheme.h"
 #include "MimeTypes.h"
 #include "MiniMenuField.h"
+#include "TFSContext.h"
 #include "Tracker.h"
 #include "Utilities.h"
 
@@ -89,7 +91,6 @@ const char *kDragNDropTypes [] = { B_QUERY_MIMETYPE, B_QUERY_TEMPLATE_MIMETYPE }
 const char *kDragNDropActionSpecifiers [] = { "Create a Query", "Create a Query template" };
 
 const uint32 kAttachFile = 'attf';
-
 
 namespace BPrivate {
 
@@ -163,7 +164,7 @@ MoreOptionsStruct::QueryTemporary(const BNode *node)
 
 
 FindWindow::FindWindow(const entry_ref *newRef, bool editIfTemplateOnly)
-	:	BWindow(kInitialRect, "Find", B_TITLED_WINDOW, B_NOT_RESIZABLE | B_NOT_ZOOMABLE),
+	:	BWindow(kInitialRect, LOCALE("Find"), B_TITLED_WINDOW, B_NOT_RESIZABLE | B_NOT_ZOOMABLE),
 		fFile(TryOpening(newRef)),
 		fFromTemplate(false),
 		fEditTemplateOnly(false),
@@ -176,7 +177,7 @@ FindWindow::FindWindow(const entry_ref *newRef, bool editIfTemplateOnly)
 			if (BNodeInfo(fFile).GetType(type) == B_OK
 				&& strcasecmp(type, B_QUERY_TEMPLATE_MIMETYPE) == 0) {
 				fEditTemplateOnly = true;
-				SetTitle("Edit Query Template");
+				SetTitle(LOCALE("Edit Query Template"));
 			}
 		}
 	} else {
@@ -342,15 +343,15 @@ FindWindow::GetDefaultName(BString &result)
 	BTextControl *textControl = dynamic_cast<BTextControl *>(FindView("TextControl"));
 	switch (fBackground->Mode()) {
 		case kByNameItem:
-			result << "Name = " << textControl->TextView()->Text();
+			result << LOCALE("Name") << " = " << textControl->TextView()->Text();
 			break;
 
 		case kByForumlaItem:
-			result << "Formula " << textControl->TextView()->Text();
+			result << LOCALE("Formula") << " " << textControl->TextView()->Text();
 			break;
 
 		case kByAttributeItem:
-			result << "Attribute Query ";
+			result << LOCALE("Attribute Query");
 			break;
 	}
 
@@ -495,7 +496,7 @@ FindWindow::Find()
 				// new copy
 				break;
 				
-			// PRINT(("waiting for query window to quit, %d\n", timeOut));
+			PRINT(("waiting for query window to quit, %d\n", timeOut));
 			if (timeOut == 5000) {
 				// the old query window would not quit for some reason
 				TRESPASS();
@@ -639,8 +640,8 @@ FindWindow::MessageReceived(BMessage *message)
 			else {
 				BMessenger panel(BackgroundView());
 				fSaveAsTemplatePanel = new BFilePanel(B_SAVE_PANEL, &panel);
-				fSaveAsTemplatePanel->SetSaveText("Query template");
-				fSaveAsTemplatePanel->Window()->SetTitle("Save As Query Template:");
+				fSaveAsTemplatePanel->SetSaveText(LOCALE("Query template"));
+				fSaveAsTemplatePanel->Window()->SetTitle(LOCALE("Save As Query Template:"));
 				fSaveAsTemplatePanel->Show();
 			}
 			break;
@@ -695,14 +696,14 @@ FindPanel::FindPanel(BRect frame, BFile *node, FindWindow *parent,
 	rect.right = rect.left + 150;
 	fMimeTypeField = new BMenuField(rect, "MimeTypeMenu", "", fMimeTypeMenu);
 	fMimeTypeField->SetDivider(0.0f);
-	fMimeTypeField->MenuItem()->SetLabel("All files and folders");
+	fMimeTypeField->MenuItem()->SetLabel(LOCALE("All files and folders"));
 	AddChild(fMimeTypeField);
 
 	// add popup for search criteria
 	fSearchModeMenu = new BPopUpMenu("searchMode");
-	fSearchModeMenu->AddItem(new BMenuItem("by Name", new BMessage(kByNameItem)));
-	fSearchModeMenu->AddItem(new BMenuItem("by Attribute", new BMessage(kByAttributeItem)));
-	fSearchModeMenu->AddItem(new BMenuItem("by Formula", new BMessage(kByForumlaItem)));
+	fSearchModeMenu->AddItem(new BMenuItem(LOCALE("by Name"), new BMessage(kByNameItem)));
+	fSearchModeMenu->AddItem(new BMenuItem(LOCALE("by Attribute"), new BMessage(kByAttributeItem)));
+	fSearchModeMenu->AddItem(new BMenuItem(LOCALE("by Formula"), new BMessage(kByForumlaItem)));
 	
 	fSearchModeMenu->ItemAt(initialMode == kByNameItem ? 0 :
 		(initialMode == kByAttributeItem ? 1 : 2))->SetMarked(true);
@@ -718,8 +719,8 @@ FindPanel::FindPanel(BRect frame, BFile *node, FindWindow *parent,
 	rect.right = bounds.right - 15;
 	rect.left = rect.right - 100;
 	fVolMenu = new BPopUpMenu("", false, false);	// don't radioMode
-	menuField = new BMenuField(rect, "", "On", fVolMenu);
-	menuField->SetDivider(20.0f);
+	menuField = new BMenuField(rect, "", LOCALE("On"), fVolMenu);
+	menuField->SetDivider(StringWidth(LOCALE("On")) + 5);
 	AddChild(menuField);
 	AddVolumes(fVolMenu);
 
@@ -730,8 +731,8 @@ FindPanel::FindPanel(BRect frame, BFile *node, FindWindow *parent,
 		dragNDropMessage.AddString("be:types", B_FILE_MIME_TYPE);
 		dragNDropMessage.AddString("be:filetypes", kDragNDropTypes[0]);
 		dragNDropMessage.AddString("be:filetypes", kDragNDropTypes[1]);
-		dragNDropMessage.AddString("be:actionspecifier", kDragNDropActionSpecifiers[0]);
-		dragNDropMessage.AddString("be:actionspecifier", kDragNDropActionSpecifiers[1]);
+		dragNDropMessage.AddString("be:actionspecifier", LOCALE(kDragNDropActionSpecifiers[0]));
+		dragNDropMessage.AddString("be:actionspecifier", LOCALE(kDragNDropActionSpecifiers[1]));
 	
 		BMessenger self(this);
 		fDraggableIcon = new DraggableQueryIcon(DraggableIcon::PreferredRect(draggableIconOrigin,
@@ -762,19 +763,20 @@ FindPanel::FindPanel(BRect frame, BFile *node, FindWindow *parent,
 	rect = expandedBounds;
 	rect.right = rect.left + 200;
 	rect.bottom = rect.top + 20;;
-	fQueryName = new BTextControl(rect, "queryName", "Query name:", "", 0);
-	fQueryName->SetDivider(60);
+	fQueryName = new BTextControl(rect, "queryName", LOCALE("Query name:"), "", 0);
+	fQueryName->SetDivider(StringWidth(LOCALE("Query name:")) + 5);
 	fMoreOptionsPane->AddItem(fQueryName, 1);
 	FillCurrentQueryName(fQueryName, parent);
 	
 	rect.top = rect.bottom + 6;
 	rect.bottom = rect.top + 16;
 	rect.right = rect.left + 100;
-	fSearchTrashCheck = new BCheckBox(rect, "searchTrash", "Include trash", 0);
+	fSearchTrashCheck = new BCheckBox(rect, "searchTrash", LOCALE("Include trash"), 0);
+	fSearchTrashCheck->ResizeToPreferred();
 	fMoreOptionsPane->AddItem(fSearchTrashCheck, 1);
 
-	rect.OffsetBy(120, 0);
-	fTemporaryCheck = new BCheckBox(rect, "temporary", "Temporary", 0);
+	rect.OffsetBy(fSearchTrashCheck->Bounds().Width() + 10, 0);
+	fTemporaryCheck = new BCheckBox(rect, "temporary", LOCALE("Temporary"), 0);
 	fMoreOptionsPane->AddItem(fTemporaryCheck, 1);
 	fTemporaryCheck->SetValue(1);
 	
@@ -803,10 +805,10 @@ FindPanel::FindPanel(BRect frame, BFile *node, FindWindow *parent,
 	rect.bottom = rect.top + 20;
 	BButton *button;
 	if (editTemplateOnly)
-		button = new BButton(rect, "save", "Save",
+		button = new BButton(rect, "save", LOCALE("Save"),
 			new BMessage(kSaveButton), B_FOLLOW_RIGHT + B_FOLLOW_BOTTOM);
 	else
-		button = new BButton(rect, "find", "Search",
+		button = new BButton(rect, "find", LOCALE("Search"),
 			new BMessage(kFindButton), B_FOLLOW_RIGHT + B_FOLLOW_BOTTOM);
 
 	AddChild(button);
@@ -970,7 +972,7 @@ FindPanel::ShowVolumeMenuLabel()
 	} else if (countSelected > 1)
 		// if more than two disks selected, don't use the disk name
 		// as a label
-		PopUpMenuSetTitle(fVolMenu, "multiple disks");
+		PopUpMenuSetTitle(fVolMenu, LOCALE("multiple disks"));
 	else {
 		ASSERT(tmpItem);
 		PopUpMenuSetTitle(fVolMenu, tmpItem->Label());
@@ -1123,10 +1125,10 @@ FindPanel::MessageReceived(BMessage *message)
 					bool queryTemplate = false;
 					
 					if (actionSpecifier
-						&& strcasecmp(actionSpecifier, kDragNDropActionSpecifiers[0]) == 0)
+						&& strcasecmp(actionSpecifier, LOCALE(kDragNDropActionSpecifiers[0])) == 0)
 						query = true;
 					else if (actionSpecifier
-						&& strcasecmp(actionSpecifier, kDragNDropActionSpecifiers[1]) == 0)
+						&& strcasecmp(actionSpecifier, LOCALE(kDragNDropActionSpecifiers[1])) == 0)
 						queryTemplate = true;
 					else if (mimeType && strcasecmp(mimeType, kDragNDropTypes[0]) == 0)
 						query = true;
@@ -1168,7 +1170,6 @@ FindPanel::BuildAttrQuery(BQuery *query, bool &dynamicDate) const
 	
 	// go through each attrview and add the attr and comparison info
 	for (int32 index = 0; index < fAttrViewList.CountItems(); index++) {
-
 		TAttrView *view = fAttrViewList.ItemAt(index);
 		BString title;
 		title << "TextEntry" << index;
@@ -1189,7 +1190,6 @@ FindPanel::BuildAttrQuery(BQuery *query, bool &dynamicDate) const
 		BMessage *message = item->Message();
 		int32 type;
 		if (message->FindInt32("type", &type) == B_OK) {
-
 			const char *str;
 			if (message->FindString("name", &str) == B_OK)
 				query->PushAttr(str);
@@ -1204,12 +1204,29 @@ FindPanel::BuildAttrQuery(BQuery *query, bool &dynamicDate) const
 				case B_TIME_TYPE:
 					{					
 						int flags = 0;
-						DEBUG_ONLY(time_t result =)
-						parsedate_etc(textControl->TextView()->Text(), -1, &flags);
+						if (parsedate_etc(textControl->TextView()->Text(), -1, &flags) < 0) {
+							const char **systemDates = get_dateformats();
+							char *userDates[7] = { NULL, NULL, NULL, NULL, NULL, NULL, NULL };
+							BString timeFormat = "User Setting";
+							
+							FormatSeparator separator = gTrackerSettings.TimeFormatSeparator();
+							DateOrder order = gTrackerSettings.DateOrderFormat();
+							bool clockIs24Hour = gTrackerSettings.ClockIs24Hr();
+							
+							for (int i = 5; i >= 0; i--) {
+								TimeFormat(timeFormat, i, separator, order, clockIs24Hour);
+								timeFormat.ReplaceAll("%", "");
+								userDates[i] = new char[timeFormat.Length() + 1];
+								strcpy(userDates[i], timeFormat.String());
+							}
+							
+							set_dateformats((const char **)userDates);
+							parsedate_etc(textControl->TextView()->Text(), -1, &flags);
+							set_dateformats(systemDates);
+							for (int i = 0; i < 6; i++)
+								delete userDates[i];
+						}
 						dynamicDate = (flags & PARSEDATE_RELATIVE_TIME) != 0;
-						PRINT(("parsedate_etc - date is %srelative, %l\n",
-							dynamicDate ? "" : "not ", result));
-
 						query->PushDate(textControl->TextView()->Text());
 					}
 					break;
@@ -1453,7 +1470,7 @@ FindPanel::CurrentMimeType(const char **type) const
 		}
 	}
 
-	if (type) {
+	if (type && item) {
 		BMessage *message = item->Message();
 		if (!message)
 			return NULL;
@@ -1576,7 +1593,7 @@ FindPanel::AddMimeTypesToMenu()
 {
 	BMessage *itemMessage = new BMessage(kMIMETypeItem);
 	itemMessage->AddString("mimetype", kAllMimeTypes);
-	MimeTypeMenu()->AddItem(new BMenuItem("All files and folders", itemMessage));
+	MimeTypeMenu()->AddItem(new BMenuItem(LOCALE("All files and folders"), itemMessage));
 	MimeTypeMenu()->AddSeparatorItem();
 	MimeTypeMenu()->ItemAt(0)->SetMarked(true);
 
@@ -1655,9 +1672,9 @@ FindPanel::AddVolumes(BMenu *menu)
 
 	BMessage *message = new BMessage(kVolumeItem);
 	message->AddInt32("device", -1);
-	menu->AddItem(new BMenuItem("All disks", message));
+	menu->AddItem(new BMenuItem(LOCALE("All disks"), message));
 	menu->AddSeparatorItem();
-	PopUpMenuSetTitle(menu, "All disks");
+	PopUpMenuSetTitle(menu, LOCALE("All disks"));
 
 	BVolumeRoster roster;
 	BVolume volume;
@@ -1795,7 +1812,7 @@ FindPanel::AddRecentQueries(BMenu *menu, bool addSaveAsItem, const BMessenger *t
 			menu->AddSeparatorItem();
 		
 		BMessage *message = new BMessage(kRunSaveAsTemplatePanel);
-		BMenuItem *item = new BMenuItem("Save Query as template"B_UTF8_ELLIPSIS, message);
+		BMenuItem *item = new BMenuItem(LOCALE("Save Query as template"B_UTF8_ELLIPSIS), message);
 		menu->AddItem(item);
 	}
 }
@@ -1822,16 +1839,18 @@ FindPanel::SetUpAddRemoveButtons(BBox *box)
 		rect.top = rect.bottom - 20;
 		rect.right = rect.left + 40;
 		
-		button = new BButton(rect, "add", "Add", new BMessage(kAddItem),
+		button = new BButton(rect, "add", LOCALE("Add"), new BMessage(kAddItem),
 			B_FOLLOW_RIGHT + B_FOLLOW_BOTTOM);
+		button->ResizeToPreferred();
 		button->SetTarget(this);
 		box->AddChild(button);
 	
-		rect.OffsetBy(50, 0);
+		rect.OffsetBy(button->Bounds().Width() + 10, 0);
 		rect.right = rect.left + 55;
-		button = new BButton(rect, "remove", "Remove", new BMessage(kRemoveItem),
+		button = new BButton(rect, "remove", LOCALE("Remove"), new BMessage(kRemoveItem),
 			B_FOLLOW_RIGHT + B_FOLLOW_BOTTOM);
 		
+		button->ResizeToPreferred();
 		button->SetEnabled(false);
 		button->SetTarget(this);
 		box->AddChild(button);
@@ -2313,7 +2332,7 @@ TAttrView::TAttrView(BRect frame, int32 index)
 	BPopUpMenu *menu = new BPopUpMenu("PopUp");
 
 	// add NAME attribute to popup
-	BMenu *submenu = new BMenu("Name");
+	BMenu *submenu = new BMenu(LOCALE("Name"));
 	submenu->SetRadioMode(true);
 	submenu->SetFont(be_plain_font);
 	BMessage *message = new BMessage(kAttributeItemMain);
@@ -2328,7 +2347,7 @@ TAttrView::TAttrView(BRect frame, int32 index)
 	for (int32 i = 0;i < 5;i++) {
 		message = new BMessage(kAttributeItem);
 		message->AddInt32("operator", operators[i]);
-		submenu->AddItem(new BMenuItem(operatorLabels[i], message));
+		submenu->AddItem(new BMenuItem(LOCALE(operatorLabels[i]), message));
 	}
 
 	// mark first item
@@ -2336,7 +2355,7 @@ TAttrView::TAttrView(BRect frame, int32 index)
 	submenu->ItemAt(0)->SetMarked(true);
 
 	// add SIZE attribute
-	submenu = new BMenu("Size");
+	submenu = new BMenu(LOCALE("Size"));
 	submenu->SetRadioMode(true);
 	submenu->SetFont(be_plain_font);
 	message = new BMessage(kAttributeItemMain);
@@ -2347,18 +2366,18 @@ TAttrView::TAttrView(BRect frame, int32 index)
 
 	message = new BMessage(kAttributeItem);
 	message->AddInt32("operator", B_GE);
-	submenu->AddItem(new BMenuItem("greater than", message));
+	submenu->AddItem(new BMenuItem(LOCALE("greater than"), message));
 
 	message = new BMessage(kAttributeItem);
 	message->AddInt32("operator", B_LE);
-	submenu->AddItem(new BMenuItem("less than", message));
+	submenu->AddItem(new BMenuItem(LOCALE("less than"), message));
 
 	message = new BMessage(kAttributeItem);
 	message->AddInt32("operator", B_EQ);
-	submenu->AddItem(new BMenuItem("is", message));
+	submenu->AddItem(new BMenuItem(LOCALE("is"), message));
 
 	// add "modified" field
-	submenu = new BMenu("Modified");
+	submenu = new BMenu(LOCALE("Modified"));
 	submenu->SetRadioMode(true);
 	submenu->SetFont(be_plain_font);
 	message = new BMessage(kAttributeItemMain);
@@ -2369,11 +2388,11 @@ TAttrView::TAttrView(BRect frame, int32 index)
 
 	message = new BMessage(kAttributeItem);
 	message->AddInt32("operator", B_LE);
-	submenu->AddItem(new BMenuItem("before", message));
+	submenu->AddItem(new BMenuItem(LOCALE("before"), message));
 
 	message = new BMessage(kAttributeItem);
 	message->AddInt32("operator", B_GE);
-	submenu->AddItem(new BMenuItem("after", message));
+	submenu->AddItem(new BMenuItem(LOCALE("after"), message));
 
 	BRect bounds(Bounds());
 	bounds.right = bounds.left + 100;
@@ -2496,14 +2515,14 @@ TAttrView::AddLogicMenu(bool selectAnd)
 	BPopUpMenu *menu = new BPopUpMenu("");
 	BMessage *message = new BMessage();
 	message->AddInt32("combine", B_AND);
-	BMenuItem *item = new BMenuItem("And", message);
+	BMenuItem *item = new BMenuItem(LOCALE("And"), message);
 	menu->AddItem(item);
 	if (selectAnd)
 		item->SetMarked(true);
 
 	message = new BMessage();
 	message->AddInt32("combine", B_OR);
-	item = new BMenuItem("Or", message);
+	item = new BMenuItem(LOCALE("Or"), message);
 	menu->AddItem(item);
 	if (!selectAnd)
 		item->SetMarked(true);
@@ -2646,25 +2665,25 @@ TAttrView::AddMimeTypeAttrs(BMenu *menu)
 			case B_STRING_TYPE:
 				message = new BMessage(kAttributeItem);
 				message->AddInt32("operator", B_CONTAINS);
-				submenu->AddItem(new BMenuItem("contains", message));
+				submenu->AddItem(new BMenuItem(LOCALE("contains"), message));
 
 				message = new BMessage(kAttributeItem);
 				message->AddInt32("operator", B_EQ);
-				submenu->AddItem(new BMenuItem("is", message));
+				submenu->AddItem(new BMenuItem(LOCALE("is"), message));
 
 				message = new BMessage(kAttributeItem);
 				message->AddInt32("operator", B_NE);
-				submenu->AddItem(new BMenuItem("is not", message));
+				submenu->AddItem(new BMenuItem(LOCALE("is not"), message));
 				submenu->SetTargetForItems(this);
 
 				message = new BMessage(kAttributeItem);
 				message->AddInt32("operator", B_BEGINS_WITH);
-				submenu->AddItem(new BMenuItem("starts with", message));
+				submenu->AddItem(new BMenuItem(LOCALE("starts with"), message));
 				submenu->SetTargetForItems(this);
 
 				message = new BMessage(kAttributeItem);
 				message->AddInt32("operator", B_ENDS_WITH);
-				submenu->AddItem(new BMenuItem("ends with", message));
+				submenu->AddItem(new BMenuItem(LOCALE("ends with"), message));
 				break;
 
 			case B_BOOL_TYPE:
@@ -2681,25 +2700,25 @@ TAttrView::AddMimeTypeAttrs(BMenu *menu)
 			case B_DOUBLE_TYPE:
 				message = new BMessage(kAttributeItem);
 				message->AddInt32("operator", B_EQ);
-				submenu->AddItem(new BMenuItem("is", message));
+				submenu->AddItem(new BMenuItem(LOCALE("is"), message));
 
 				message = new BMessage(kAttributeItem);
 				message->AddInt32("operator", B_GE);
-				submenu->AddItem(new BMenuItem("greater than", message));
+				submenu->AddItem(new BMenuItem(LOCALE("greater than"), message));
 
 				message = new BMessage(kAttributeItem);
 				message->AddInt32("operator", B_LE);
-				submenu->AddItem(new BMenuItem("less than", message));
+				submenu->AddItem(new BMenuItem(LOCALE("less than"), message));
 				break;
 
 			case B_TIME_TYPE:
 				message = new BMessage(kAttributeItem);
 				message->AddInt32("operator", B_LE);
-				submenu->AddItem(new BMenuItem("before", message));
+				submenu->AddItem(new BMenuItem(LOCALE("before"), message));
 
 				message = new BMessage(kAttributeItem);
 				message->AddInt32("operator", B_GE);
-				submenu->AddItem(new BMenuItem("after", message));
+				submenu->AddItem(new BMenuItem(LOCALE("after"), message));
 				break;
 		}
 		submenu->SetTargetForItems(this);
@@ -2898,10 +2917,7 @@ RecentFindItemsMenu::AttachedToWindow()
 }
 
 
-#if !B_BEOS_VERSION_DANO
-_IMPEXP_TRACKER
-#endif
-BMenu *
+_IMPEXP_TRACKER BMenu *
 TrackerBuildRecentFindItemsMenu(const char *title)
 {
 	BMessenger tracker(kTrackerSignature);
@@ -2930,7 +2946,7 @@ DraggableQueryIcon::DragStarted(BMessage *dragMessage)
 	ASSERT(window);
 	dragMessage->AddString("be:clip_name",
 		window->BackgroundView()->UserSpecifiedName() ?
-			window->BackgroundView()->UserSpecifiedName() : "New Query");
+			window->BackgroundView()->UserSpecifiedName() : LOCALE("New Query"));
 
 	return true;
 }
@@ -2951,6 +2967,10 @@ MostUsedNames::MostUsedNames(const char *fileName,const char *directory,int32 ma
 
 MostUsedNames::~MostUsedNames()
 {
+	// only write back settings when we've been used
+	if (!fLoaded)
+		return;
+
 	// write most used list to file
 
 	BPath path;
@@ -2959,7 +2979,7 @@ MostUsedNames::~MostUsedNames()
 
 	path.Append(fDirectory);
 	path.Append(fFileName);
-	BFile file(path.Path(),B_WRITE_ONLY | B_CREATE_FILE);
+	BFile file(path.Path(),B_WRITE_ONLY | B_CREATE_FILE | B_ERASE_FILE);
 	if (file.InitCheck() == B_OK) {
 		for (int32 i = 0;i < fList.CountItems();i++) {
 			list_entry *entry = static_cast<list_entry *>(fList.ItemAt(i));
@@ -2967,10 +2987,15 @@ MostUsedNames::~MostUsedNames()
 			char line[B_FILE_NAME_LENGTH + 5];
 
 			// limit upper bound to react more dynamically to changes
-			if (entry->count > 15)
-				entry->count = 15;
+			if (entry->count > 20)
+				entry->count = 20;
+			
+			// if the item hasn't been chosen in a while, remove it
+			// (but leave at least one item in the list)
+			if (entry->count < -10 && i > 0)
+				continue;
 
-			sprintf(line,"%ld %s\n",entry->count,entry->name);
+			sprintf(line,"%ld %s\n", entry->count,entry->name);
 			if (file.Write(line,strlen(line)) < B_OK)
 				break;
 		}
@@ -2996,7 +3021,7 @@ MostUsedNames::ObtainList(BList *list)
 	if (!fLoaded)
 		UpdateList();
 
-	AutoLock<Benaphore> locker(fLock);
+	fLock.Lock();
 
 	list->MakeEmpty();
 	for (int32 i = 0; i < fCount; i++) {
@@ -3054,7 +3079,9 @@ MostUsedNames::AddName(const char *name)
 		entry->count = 1;
 		
 		fList.AddItem(entry);
-	} else
+	} else if (entry->count < 0)
+		entry->count = 1;
+	else
 		entry->count++;
 
 	fLock.Unlock();
@@ -3102,8 +3129,6 @@ MostUsedNames::LoadList()
 			line[length] = '\0';
 
 		int32 count = atoi(line);
-		if (count < 1)
-			continue;
 		
 		char *name = strchr(line,' ');
 		if (name == NULL || *(++name) == '\0')

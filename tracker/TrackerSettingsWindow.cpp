@@ -32,12 +32,12 @@ names are registered trademarks or trademarks of their respective holders.
 All rights reserved.
 */
 
+#include "Defines.h"
+#include "LanguageTheme.h"
 #include "SettingsViews.h"
-#include "Tracker.h"
 #include "TrackerSettings.h"
 #include "TrackerSettingsWindow.h"
 
-#include <Alert.h>
 #include <CheckBox.h>
 
 const BPoint kSettingsWindowOffset(30, 30);
@@ -53,7 +53,7 @@ TrackerSettingsWindow::TrackerSettingsWindow()
 	:	BWindow(BRect(kSettingsWindowOffset.x, kSettingsWindowOffset.y,
 			kSettingsWindowOffset.x + kSettingsWindowsWidth,
 			kSettingsWindowOffset.y + kSettingsWindowsHeight),
-			"Tracker Settings", B_TITLED_WINDOW, B_NOT_MINIMIZABLE | B_NOT_RESIZABLE
+			LOCALE("Tracker Settings"), B_TITLED_WINDOW, B_NOT_MINIMIZABLE | B_NOT_RESIZABLE
 			| B_NO_WORKSPACE_ACTIVATION | B_NOT_ANCHORED_ON_ACTIVATE
 			| B_ASYNCHRONOUS_CONTROLS | B_NOT_ZOOMABLE)
 {
@@ -95,16 +95,16 @@ TrackerSettingsWindow::TrackerSettingsWindow()
 	
 	fDefaultsButton = new BButton(BRect(kDefaultsButtonLeft, kButtonTop,
 		 kDefaultsButtonLeft + kButtonWidth, kButtonTop + kButtonHeight),
-		 "Defaults", "Defaults", new BMessage(kDefaultsButtonPressed));
+		 "Defaults", LOCALE("Defaults"), new BMessage(kDefaultsButtonPressed));
 
 	backgroundView->AddChild(fDefaultsButton);
-
+	
 	fDefaultsButton->ResizeToPreferred();
 	fDefaultsButton->SetEnabled(true);
 
 	fRevertButton = new BButton(BRect(fDefaultsButton->Frame().right + kBorderDistance,
 		kButtonTop, fDefaultsButton->Frame().right + kBorderDistance + kButtonWidth, kButtonTop
-		+ kButtonHeight), "Revert", "Revert", new BMessage(kRevertButtonPressed));
+		+ kButtonHeight), "Revert", LOCALE("Revert"), new BMessage(kRevertButtonPressed));
 	
 	fRevertButton->SetEnabled(false);
 	fRevertButton->ResizeToPreferred();
@@ -114,21 +114,29 @@ TrackerSettingsWindow::TrackerSettingsWindow()
 	
 	SettingsViewSize.top += 10;
 	
-	fSettingsTypeListView->AddItem(new SettingsItem("Desktop",
+	fSettingsTypeListView->AddItem(new SettingsItem(LOCALE("Desktop"),
 		new DesktopSettingsView(SettingsViewSize)));
-	fSettingsTypeListView->AddItem(new SettingsItem("Windows",
+	fSettingsTypeListView->AddItem(new SettingsItem(LOCALE("Windows"),
 		new WindowsSettingsView(SettingsViewSize)));
-	fSettingsTypeListView->AddItem(new SettingsItem("File Panel",
+	fSettingsTypeListView->AddItem(new SettingsItem(LOCALE("File Panel"),
 		new FilePanelSettingsView(SettingsViewSize)));
-	fSettingsTypeListView->AddItem(new SettingsItem("Time Format",
+	fSettingsTypeListView->AddItem(new SettingsItem(LOCALE("Time Format"),
 		new TimeFormatSettingsView(SettingsViewSize)));
-	fSettingsTypeListView->AddItem(new SettingsItem("Trash",
+	fSettingsTypeListView->AddItem(new SettingsItem(LOCALE("Trash"),
 		new TrashSettingsView(SettingsViewSize)));
-	fSettingsTypeListView->AddItem(new SettingsItem("Volume Icons",
+	fSettingsTypeListView->AddItem(new SettingsItem(LOCALE("Volume Icons"),
 		new SpaceBarSettingsView(SettingsViewSize)));
-	fSettingsTypeListView->AddItem(new SettingsItem("Transparent Selection",
+	fSettingsTypeListView->AddItem(new SettingsItem(LOCALE("Selection"),
 		new TransparentSelectionSettingsView(SettingsViewSize)));
-
+	fSettingsTypeListView->AddItem(new SettingsItem(LOCALE("Filtering"),
+		new FilteringSettingsView(SettingsViewSize)));
+	fSettingsTypeListView->AddItem(new SettingsItem(LOCALE("Undo"),
+		new UndoSettingsView(SettingsViewSize)));
+	fSettingsTypeListView->AddItem(new SettingsItem(LOCALE("Icon Themes"),
+		new IconThemeSettingsView(SettingsViewSize)));
+	fSettingsTypeListView->AddItem(new SettingsItem(LOCALE("Language"),
+		new LanguageThemeSettingsView(SettingsViewSize)));
+	
 	fSettingsTypeListView->SetSelectionMessage(new BMessage(kSettingsViewChanged));
 
 	fSettingsTypeListView->Select(0);
@@ -229,7 +237,7 @@ TrackerSettingsWindow::HandleChangedContents()
 	fSettingsTypeListView->Invalidate();	
 	fRevertButton->SetEnabled(revertable);
 
-	TrackerSettings().SaveSettings(false);
+	gTrackerSettings.SaveSettings(false);
 }
 
 

@@ -61,6 +61,10 @@ const char *kBackgroundImageInfoPath 		= "be:bgndimginfopath";
 BackgroundImage *
 BackgroundImage::GetBackgroundImage(const BNode *node, bool isDesktop)
 {
+#ifdef __HAIKU__
+	return NULL;
+#endif
+	
 	attr_info info;
 	if (node->GetAttrInfo(kBackgroundImageInfo, &info) != B_OK)
 		return NULL;
@@ -90,7 +94,7 @@ BackgroundImage::GetBackgroundImage(const BNode *node, bool isDesktop)
 		
 		BBitmap *bitmap = BTranslationUtils::GetBitmap(path);
 		if (!bitmap) {
-//			PRINT(("failed to load background bitmap from path\n"));
+			PRINT(("failed to load background bitmap from path\n"));
 			continue;
 		}
 		

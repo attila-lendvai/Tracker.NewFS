@@ -104,7 +104,7 @@ BTrashWatcher::MessageReceived(BMessage *message)
 				message->FindInt64("to directory", &toDir);
 				if (fromDir == toDir)
 					break;
-			}			
+			}
 			// fall thru
 			
 		case B_DEVICE_UNMOUNTED:
@@ -146,7 +146,25 @@ BTrashWatcher::MessageReceived(BMessage *message)
 void
 BTrashWatcher::UpdateTrashIcons()
 {
+#ifndef OLD_TRASHWATCHER
+	// cause update in the cache
+	IconCache::sIconCache->IconChanged("tracker/active_trash", NULL);
 	
+	BVolume	boot;
+	if (BVolumeRoster().GetBootVolume(&boot) != B_OK)
+		return;
+	
+	BDirectory dir;
+	if (TFSContext::GetTrashDir(dir, boot.Device()) != B_OK)
+		return;
+	
+	// trigger an attrchanged notification to any watching model
+	// this will cause a redraw
+	uint8 temp;
+	dir.ReadAttr(kAttrMiniIcon, B_COLOR_8_BIT_TYPE, 0, &temp, 1);
+	dir.WriteAttr(kAttrMiniIcon, B_COLOR_8_BIT_TYPE, 0, &temp, 1);
+	
+#else
 	BVolume	boot;
 	if (BVolumeRoster().GetBootVolume(&boot) != B_OK)
 		return;
@@ -157,24 +175,44 @@ BTrashWatcher::UpdateTrashIcons()
 		// apply them onto the trash directory node
 		size_t largeSize = 0;
 		size_t smallSize = 0;
+		
 		const void *largeData = GetTrackerResources()->LoadResource('ICON',
 			fTrashFull ? kResTrashFullIcon : kResTrashIcon, &largeSize);
 
 		const void *smallData = GetTrackerResources()->LoadResource('MICN',
 			fTrashFull ? kResTrashFullIcon : kResTrashIcon,  &smallSize);
 
+		// apply the themed svg icon
+		if (TrackerSettings().ThemesEnabled()) {
+			const char *filename = GetTrackerTheme()->FileForID(fTrashFull ? kResTrashFullIcon : kResTrashIcon);
+			BPath path = GetTrackerTheme()->GetIconPath(filename, USE_SCALABLE);
+			if (path.Path() != NULL) {
+				BFile file(path.Path(), B_READ_ONLY);
+				
+				if (file.InitCheck() == B_OK) {
+					off_t size;
+					file.GetSize(&size);
+					uint8 buffer[size];
+					file.Read(buffer, size);
+					trashDir.RemoveAttr(kAttrScalableIcon);
+					trashDir.WriteAttr(kAttrScalableIcon, 'ZICO', 0, buffer, size);
+				}
+			}
+		}
+		
 		if (largeData) 
 			trashDir.WriteAttr(kAttrLargeIcon, B_COLOR_8_BIT_TYPE, 0,
 				largeData, largeSize);
 		else
 			TRESPASS();
-
+		
 		if (smallData)
 			trashDir.WriteAttr(kAttrMiniIcon, B_COLOR_8_BIT_TYPE, 0,
 				smallData, smallSize);
 		else
 			TRESPASS();
 	}
+#endif
 }
 
 void
