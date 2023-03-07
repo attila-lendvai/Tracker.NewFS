@@ -1,0 +1,53 @@
+
+// take care when editing!!!
+
+//	constant name, 				name that appears to the user,					is it an extended one?
+
+FSCMD_INITED(kSkipEntry,			"Skip this entry", 0,					true)
+	// kSkipEntry is a special one, if not handled (error before the first file is processed)
+	// then simply B_OK=kSkipEntry=0 will be returned.
+	
+FSCMD_HIDDEN(kInvalidCommand,		231231239)							// this is a flag with the type command to indicate the end of the static command lists
+
+FSCMD_HIDDEN(kFirstThrowableCommand, 1)
+
+	FSCMD_INITED(kRetryEntry,		"Start again with this entry", 1,		true)	// XXX is it clear?
+	FSCMD(kCancel,					0,										false)
+	FSCMD(kSkipOperation,			0,										false)	// special cased in FSDialogWindow.cpp
+	FSCMD(kSkipDirectory,			"Skip current directory",				true)
+
+FSCMD_HIDDEN(kLastThrowableCommand, kSkipDirectory)
+
+FSCMD(kPause,						0,										false)
+FSCMD(kRetryOperation,				0,										false)
+		
+FSCMD(kCreateAbsolute,				"Create absolute link",					false)	// custom commands from here
+FSCMD(kCopyEachOneInstead,			"Copy link targets instead",			false)
+FSCMD(kRawCopyLink,					"Copy link as is (raw mode)",			false)
+FSCMD(kCopyInstead,					"Copy instead",							false)
+FSCMD(kCopyInsteadAndDelete,		"Copy instead and delete source",		false)
+FSCMD(kCopyInsteadAndTrash,			"Copy instead and move source to Trash",false)
+FSCMD(kReplace,						"Replace",								false)
+FSCMD(kReplaceIfNewer,				"Replace if source is newer",			true)
+FSCMD(kIgnore,						"Ignore",								true)
+FSCMD(kGoOnAndDelete,				"Delete",								false)
+FSCMD(kEnterBoth,					"Enter both dirs and go on",			true)
+FSCMD(kAppend,						"Append to the target",					true)
+FSCMD(kContinueFile,				"Continue copy",						true)
+FSCMD(kMakeUniqueName,				"Find a unique name",					false)
+FSCMD(kMoveTargetToTrash,			"Move target to Trash",					true)
+FSCMD(kMoveToTrash,					"Move to Trash",						true)	// this one is used in the deletion anknowledgement
+FSCMD(kDeleteInstead,				"Delete",								false)
+FSCMD(kSuppliedNewNameForSource,	"Rename source before the operation",	false)
+FSCMD(kSuppliedNewNameForTarget,	"Rename target before the operation",	true)
+FSCMD(kMakeSpaceFromTrash,			"Free up space from the Trash",			false)
+FSCMD(kKeepIt,						"Keep it as is",						false)
+FSCMD(kResetSize,					"Reset size to original",				false)
+FSCMD(kAddPrefixToSource,			"Add a prefix to the source",			true)
+FSCMD(kAddSuffixToSource,			"Add a suffix to the source",			true)
+FSCMD(kAddPrefixToTarget,			"Add a prefix to the target",			true)
+FSCMD(kAddSuffixToTarget,			"Add a suffix to the target",			true)
+
+#undef FSCMD
+#undef FSCMD_HIDDEN
+#undef FSCMD_INITED

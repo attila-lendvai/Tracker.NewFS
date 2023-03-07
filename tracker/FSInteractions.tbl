@@ -1,0 +1,420 @@
+// Open Tracker License
+//
+// Terms and Conditions
+//
+// Copyright (c) 1991-2000, Be Incorporated. All rights reserved.
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy of
+// this software and associated documentation files (the "Software"), to deal in
+// the Software without restriction, including without limitation the rights to
+// use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+// of the Software, and to permit persons to whom the Software is furnished to do
+// so, subject to the following conditions:
+// 
+// The above copyright notice and this permission notice applies to all licensees
+// and shall be included in all copies or substantial portions of the Software.
+// 
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF TITLE, MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+// BE INCORPORATED BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN
+// AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF, OR IN CONNECTION
+// WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+//
+// Except as contained in this notice, the name of Be Incorporated shall not be
+// used in advertising or otherwise to promote the sale, use or other dealings in
+// this Software without prior written authorization from Be Incorporated.
+// 
+// Tracker(TM), Be(R), BeOS(R), and BeIA(TM) are trademarks or registered trademarks
+// of Be Incorporated in the United States and other countries. Other brand product
+// names are registered trademarks or trademarks of their respective holders.
+// All rights reserved.
+
+// for kCopyOneEachInstead 'each' is required because in a per entry base we could stuck in an endless loop
+
+// INT parameters:
+//	name
+//	description
+//	wether it should print file name and operation
+// then define the possible answers for that interaction parameters:
+//	constant name,		wether it is extended (not visible in "less" mode)
+
+//	kSkipEntry				These answers are enabled/disabled depending on the context.
+//	kSkipOperation			They are here only to define their right position in the list of possible answers if they
+//	kRetryEntry				are enabled. So in theory all of them should be listed here for each interaction
+//	kSkipDirectory			because noone knows here which one will be enabled, but kCannotRelativeLink
+//	kIgnore					for example will never have a kIgnore answer... I list them anyway for consistency
+
+
+INT_8(
+	kCannotRelativeLink,
+	"Cannot create relative link across volumes!",
+	true,
+
+	kCreateAbsolute,				false,
+	kSkipEntry,					false,
+	kRawCopyLink,				true,
+	kCopyEachOneInstead,		true,
+
+	kSkipOperation,				true,
+	kRetryEntry,					true,
+	kSkipDirectory,				true,
+	kIgnore,						true
+)
+
+		
+INT_8(
+	kCannotMove,
+	"Cannot move an entry across volumes!",
+	true,
+
+	kCopyInstead,				false,
+	kCopyInsteadAndDelete,		false,
+	kCopyInsteadAndTrash,		false,
+
+	kSkipEntry,					true,
+	kSkipOperation,				true,
+	kRetryEntry,					true,
+	kSkipDirectory,				true,
+	kIgnore,						true
+)
+
+			
+INT_6(
+	kLinksNotSupported,
+	"Cannot create link because links are not supported on the destination volume!",
+	true,
+
+	kCopyEachOneInstead, 		false,
+
+	kSkipEntry,					false,
+	kSkipOperation,				true,
+	kRetryEntry,					true,
+	kSkipDirectory,				true,
+	kIgnore,						true
+)
+
+	
+// file - file collision
+INT_13(
+	kFileAlreadyExists,
+	"A file with that name already exists in the destination folder!",
+	true,
+
+	kReplace,					false,
+	kReplaceIfNewer,			false,
+	kSkipEntry,					false,
+	kMakeUniqueName,			true,
+	kSuppliedNewNameForSource,	true,
+	kSuppliedNewNameForTarget,	true,
+	kMoveTargetToTrash,		true,
+	kAppend,					true,
+	kContinueFile	,				true,
+
+	kSkipOperation,				true,
+	kRetryEntry,					true,
+	kSkipDirectory,				true,
+	kIgnore,						true
+)
+	
+
+// dir - dir collision
+INT_12(
+	kDirectoryAlreadyExists,
+	"A directory with that name already exists in the destination folder!",
+	true,
+
+	kReplace,					false,
+	kReplaceIfNewer,			false,
+	kEnterBoth,					false,
+	kSkipEntry,					false,
+	kMakeUniqueName,			true,
+	kSuppliedNewNameForSource,	true,
+	kSuppliedNewNameForTarget,	true,
+	kMoveTargetToTrash,		true,
+
+	kSkipOperation,				true,
+	kRetryEntry,					true,
+	kSkipDirectory,				true,
+	kIgnore,						true
+)
+
+
+// generic collision
+INT_11(
+	kTargetAlreadyExists,
+	"An entry with that name already exists in the destination folder!",
+	true,
+
+	kReplace,					false,
+	kReplaceIfNewer,			false,
+	kSkipEntry,					false,
+	kMakeUniqueName,			true,
+	kSuppliedNewNameForSource,	true,
+	kSuppliedNewNameForTarget,	true,
+	kMoveTargetToTrash,		true,
+
+	kSkipOperation,				true,
+	kRetryEntry,					true,
+	kSkipDirectory,				true,
+	kIgnore,						true
+)
+
+// this is called if creating a link and the target name is already used
+INT_10(
+	kTargetNameOccupied,
+	"An entry with that name already exists in the destination folder!",
+	true,
+
+	kReplace,					false,
+	kSkipEntry,					false,
+	kMakeUniqueName,			true,
+	kSuppliedNewNameForSource,	true,
+	kSuppliedNewNameForTarget,	true,
+	kMoveTargetToTrash,		true,
+
+	kSkipOperation,				true,
+	kRetryEntry,					true,
+	kSkipDirectory,				true,
+	kIgnore,						true
+)
+
+// collision when restoring something from the Trash
+INT_11(
+	kOriginalNameAlreadyExists,
+	"The original name of this entry is occupied!",
+	true,
+
+	kReplace,					false,
+	kReplaceIfNewer,			false,
+	kSkipEntry,					false,
+	kMakeUniqueName,			true,
+	kSuppliedNewNameForSource,	true,
+	kSuppliedNewNameForTarget,	true,
+	kMoveTargetToTrash,		true,
+
+	kSkipOperation,				true,
+	kRetryEntry,					true,
+	kSkipDirectory,				true,
+	kIgnore,						true
+)
+
+INT_6(
+	kCannotMoveToTrash,
+	"Moving to the Trash failed!",
+	true,
+
+	kDeleteInstead,				false,
+	kSkipEntry,					false,
+
+	kSkipOperation,				true,
+	kRetryEntry,					true,
+	kSkipDirectory,				true,
+	kIgnore,						true
+)
+
+
+INT_6(
+	kNotEnoughFreeSpaceForThisFile,
+	"There's not enough free space on the destination volume for this file!",
+	true,
+
+	kIgnore,						false,
+	kMakeSpaceFromTrash,		false,
+	kSkipEntry,					false,
+
+	kSkipOperation,				true,
+	kRetryEntry,					true,
+	kSkipDirectory,				true
+)
+
+INT_6(
+	kNotEnoughFreeSpace,
+	"There's not enough free space on the destination volume!",
+	false,
+
+	kIgnore,						false,
+	kMakeSpaceFromTrash,		false,
+	kSkipEntry,					false,
+	
+	kSkipOperation,				true,
+	kRetryEntry,					true,
+	kSkipDirectory,				true
+)
+
+// asked right before we start removing entries
+INT_7(
+	kAboutToDelete,
+	"BuG!",					// special cased in FSDialogWindow.h
+	false,
+
+	kGoOnAndDelete,			false,
+	kMoveToTrash,				false,
+
+	kSkipEntry,					true,
+	kSkipOperation,				true,
+	kRetryEntry,					true,
+	kSkipDirectory,				true,
+	kIgnore,						true
+)
+
+
+INT_7(
+	kAboutToCleanupFile,
+	"This file was not copied entirely. What should happen?",
+	true,
+
+	kGoOnAndDelete,			false,
+	kKeepIt,						false,
+
+	kSkipEntry,					true,
+	kSkipOperation,				true,
+	kRetryEntry,					true,
+	kSkipDirectory,				true,
+	kIgnore,						true
+)
+
+INT_7(
+	kAboutToCleanupAppending,
+	"This file was being appended to another one, but the operation wasn't finished. What should happen?",
+	true,
+
+	kResetSize,					false,
+	kKeepIt,						false,
+
+	kSkipEntry,					true,
+	kSkipOperation,				true,
+	kRetryEntry,					true,
+	kSkipDirectory,				true,
+	kIgnore,						true
+)
+
+INT_7(
+	kAboutToCleanupDirectory,
+	"This directory wasn't completed. What should happen?",
+	true,
+
+	kGoOnAndDelete,			false,
+	kKeepIt,						false,
+
+	kSkipEntry,					true,
+	kSkipOperation,				true,
+	kRetryEntry,					true,
+	kSkipDirectory,				true,
+	kIgnore,						true
+)
+
+
+// from here there's no extra return code, only a thrown kSkipEntry or kCancel, maybe kRetryEntry if enabled
+INT_5(
+	kTargetIsSelfOrSubfolder,
+	"Cannot move or copy a folder into itself or any of it's subfolders!",
+	true,
+
+	kSkipEntry,					false,
+	kSkipOperation,				true,
+	kRetryEntry,					true,
+	kSkipDirectory,				true,
+	kIgnore,						true
+)
+
+INT_5(
+	kTargetIsTrash,
+	"Cannot move, copy, create link, etc. into the Trash!",
+	false,
+
+	kSkipEntry,					false,
+	kSkipOperation,				true,
+	kRetryEntry,					true,
+	kSkipDirectory,				true,
+	kIgnore,						true
+)
+
+INT_5(
+	kTargetIsTheRoot,
+	"Cannot move, copy, create link, etc. into the root folder!",
+	false,
+
+	kSkipEntry,					false,
+	kSkipOperation,				true,
+	kRetryEntry,					true,
+	kSkipDirectory,				true,
+	kIgnore,						true
+)
+
+INT_5(
+	kSourceAndTargetIsTheSame,
+	"Source and destination folders are the same!",
+	true,
+	
+	kSkipEntry,					false,
+	kSkipOperation,				true,
+	kRetryEntry,					true,
+	kSkipDirectory,				true,
+	kIgnore,						true
+)
+
+INT_5(
+	kCannotTrashHomeDesktopOrTrash,
+	"Cannot move the Trash, Home or Desktop into the Trash!",
+	true,
+	
+	kSkipEntry,					false,
+	kSkipOperation,				true,
+	kRetryEntry,					true,
+	kSkipDirectory,				true,
+	kIgnore,						true
+)
+
+INT_5(
+	kCannotUnmountBootVolume,
+	"Cannot unmount the boot volume!",
+	true,
+
+	kSkipEntry,					false,
+	kSkipOperation,				true,
+	kRetryEntry,					true,
+	kSkipDirectory,				true,
+	kIgnore,						true
+)
+
+INT_5(
+	kTargetIsReadOnly,
+	"Target volume is read-only!",
+	false,
+
+	kSkipEntry,					false,
+	kSkipOperation,				true,
+	kRetryEntry,					true,
+	kSkipDirectory,				true,
+	kIgnore,						true
+)
+
+INT_5(
+	kIrregularFile,
+	"This entry is an irregular file, probably a device file in /dev!",
+	true,
+	
+	kSkipEntry,					false,
+	kSkipOperation,				true,
+	kRetryEntry,					true,
+	kSkipDirectory,				true,
+	kIgnore,						true
+)
+
+#undef INT_0
+#undef INT_1
+#undef INT_2
+#undef INT_3
+#undef INT_4
+#undef INT_5
+#undef INT_6
+#undef INT_7
+#undef INT_8
+#undef INT_9
+#undef INT_10
+#undef INT_11
+#undef INT_12
+#undef INT_13
+
+
